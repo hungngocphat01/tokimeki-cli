@@ -26,18 +26,19 @@ tokimeki runner --id node01 --manner-period 30m
 
 
 # From any shared fs node: submit work at any time
-tokimeki submit -c "python do_compute.py --alpha 0.001"
-tokimeki submit -w node01 -c "python do_compute.py --alpha 0.001"
+# This works before any runner is ready
+tokimeki submit do_compute.sh
 
 # Wrong config? replace process immediately without re-entering scheduler queue
-tokimeki kill node01 <job_id>
 tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
+#                ^~~~ submits directly to node01
+tokimeki kill node01 <old_job_id>
 
 # Finished early? enqueue the next experiment in the same allocation
 tokimeki submit eval-script.sh
 ```
 
-The runner is polite and has good manners. It ends its lifecycle after being jobless for 1 hour (default), releasing the node to the underlying job scheduler.
+The runner is polite and has good manners. It ends its lifecycle after being jobless for 1 hour (default), releasing the node to the underlying job scheduler. It does not work outside the limit commited to the underlying (e.g. PBS) scheduler.
 
 ## Etymology
 
@@ -101,6 +102,21 @@ When starting a runner, you can also provide a maximum lifetime such as `tokimek
 When submitting a job, you can provide an estimated required runtime with `tokimeki submit --burst 8h`. Tokimeki scans the current runners and only dispatches work to a runner whose remaining lifetime can accommodate that burst. If no current runner can finish the job, the CLI will notify and does not submit the job. This behavior is intended for jobs where resuming is difficult, and must be finished within the runner's lifetime.
 
 
+### Communication protocol: atomic writes
+
+The shared filesystem is the only communication channel between Tokimeki runners and the user. A request is made by writing a file to a predetermined location, and poll for response in another location.
+
+Atomicity is achieved through a simple trick. Almost every file write in the system goes through the same primitive: write to a temp file, fsync, then rename to the final path.
+
+```text
+write(content) -> ~/.tokimeki/tmp/<random>.tmp
+fsync()
+rename() -> final destination
+```
+
+`rename()` on POSIX is atomic within the same filesystem. This guarantees no reader ever sees a half-written file. The temp directory must be on the same filesystem as the final destination for the rename to be atomic. Synchronization between workers rely on a similar trick. Note that Tokimeki might not work reliably on remote filesystems that does not obey this assumption.
+
+
 ## CLI Reference
 
 - `tokimeki runner`: start a runner daemon on the current node, optionally with `--lifetime`
@@ -120,15 +136,3 @@ When submitting a job, you can provide an estimated required runtime with `tokim
 | Environment Variable | Description | Default |
 |---|---|---|
 | `TOKIMEKI_HOME` | Base directory for all state | `~/.tokimeki` |
-
-## Atomic writes
-
-Almost every file write in the system goes through the same primitive: write to a temp file, fsync, then rename to the final path.
-
-```text
-write(content) -> ~/.tokimeki/tmp/<random>.tmp
-fsync()
-rename() -> final destination
-```
-
-`rename()` on POSIX is atomic within the same filesystem. This guarantees no reader ever sees a half-written file. The temp directory must be on the same filesystem as the final destination for the rename to be atomic.
