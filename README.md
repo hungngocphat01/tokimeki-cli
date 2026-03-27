@@ -22,18 +22,18 @@ Tokimeki solves both. You submit a PBS/SLURM job that starts a Tokimeki Runner, 
 # In the scheduler allocation: start one runner process
 #!/bin/bash
 #PBS -l walltime=24:00:00
-tokimeki runner --id node01 --manner-period 30m
+tokimeki runner --id node01 --lifetime 24h --manner-period 30m
 
 # From login node (or any shared-fs node): submit work at any time
-tokimeki submit -c "python do_compute.py --alpha 0.001"
-tokimeki submit -w node01 -c "python do_compute.py --alpha 0.001"
+tokimeki submit --burst 8h -c "python do_compute.py --alpha 0.001"
+tokimeki submit -w node01 --burst 8h -c "python do_compute.py --alpha 0.001"
 
 # Wrong config? replace process immediately without re-entering scheduler queue
 tokimeki kill node01 <job_id>
-tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
+tokimeki submit -w node01 --burst 8h -c "python do_compute.py --alpha 0.0003"
 
 # Finished early? enqueue the next experiment in the same allocation
-tokimeki submit -c "python eval.py"
+tokimeki submit --burst 2h -c "python eval.py"
 
 # The runner is polite and has good manners. It ends its lifecycle after being jobless
 # for 1 hour (default), releasing the node to the underlying job scheduler
@@ -61,10 +61,10 @@ go build -o tokimeki \
 tokimeki version
 
 # On a compute node: start a runner
-tokimeki runner --id node01
+tokimeki runner --id node01 --lifetime 48h
 
 # From anywhere: submit a job (works even before the runner starts)
-tokimeki submit solve.sh
+tokimeki submit --burst 8h solve.sh
 
 # Check status
 tokimeki runners        # list all runners
@@ -78,7 +78,7 @@ tokimeki job <job_id>   # job details
 
 Tokimeki is **masterless**. There is no coordinator process. Every runner simply does what it likes to do.
 
-Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time.
+Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. Workers can also advertise their maximum lifetime so submission can take remaining time into account when scheduling work.
 
 This means:
 
@@ -92,13 +92,19 @@ Runners are polite. If a runner has been **jobless** for the manner period (defa
 
 The manner timer resets every time a job is running or queued. So if jobs keep arriving, the runner stays alive indefinitely.
 
+## Lifetime and burst scheduling
+
+When starting a runner, you can also provide a maximum lifetime such as `--lifetime 48h`. This should match the time you registered with the underlying job system. It does not extend or reduce the actual lifetime of the node by itself, but it gives Tokimeki useful scheduling information.
+
+When submitting a job, you can provide an estimated required runtime with `--burst 8h`. Tokimeki scans the current workers and only dispatches work to a worker whose remaining lifetime can accommodate that burst. If no current worker can finish the job, the CLI reports back: `No worker will be able to finish this job`.
+
 
 ## CLI Reference
 
-- `tokimeki runner`: start a runner daemon on the current node
+- `tokimeki runner`: start a runner daemon on the current node, optionally with `--lifetime`
 - `tokimeki runners`: list known runners and their liveness
 - `tokimeki ps`: inspect queued and running jobs
-- `tokimeki submit`: submit a script or inline command
+- `tokimeki submit`: submit a script or inline command, optionally with `--burst`
 - `tokimeki exec`: run a one-off command on a target runner
 - `tokimeki kill`: stop the currently running job on a runner
 - `tokimeki cancel`: cancel a queued job
