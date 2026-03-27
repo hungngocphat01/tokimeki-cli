@@ -25,18 +25,19 @@ Tokimeki solves both. You submit a PBS/SLURM job that starts a Tokimeki Runner, 
 tokimeki runner --id node01 --lifetime 24h --manner-period 30m
 
 # From login node (or any shared-fs node): submit work at any time
-tokimeki submit --burst 8h -c "python do_compute.py --alpha 0.001"
-tokimeki submit -w node01 --burst 8h -c "python do_compute.py --alpha 0.001"
+tokimeki submit -c "python do_compute.py --alpha 0.001"
+tokimeki submit -w node01 -c "python do_compute.py --alpha 0.001"
 
 # Wrong config? replace process immediately without re-entering scheduler queue
 tokimeki kill node01 <job_id>
-tokimeki submit -w node01 --burst 8h -c "python do_compute.py --alpha 0.0003"
+tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
 
 # Finished early? enqueue the next experiment in the same allocation
-tokimeki submit --burst 2h -c "python eval.py"
+tokimeki submit eval-script.sh
 
-# The runner is polite and has good manners. It ends its lifecycle after being jobless
-# for 1 hour (default), releasing the node to the underlying job scheduler
+# The runner is polite and has good manners. It ends its lifecycle after
+# being jobless for 1 hour (default), releasing the node to the underlying
+# job scheduler
 ```
 
 ## Etymology
@@ -64,7 +65,8 @@ tokimeki version
 tokimeki runner --id node01 --lifetime 48h
 
 # From anywhere: submit a job (works even before the runner starts)
-tokimeki submit --burst 8h solve.sh
+tokimeki submit solve.sh
+tokimeki submit --burst 8h important-job.sh
 
 # Check status
 tokimeki runners        # list all runners
@@ -76,7 +78,7 @@ tokimeki job <job_id>   # job details
 
 ## Architecture
 
-Tokimeki is **masterless**. There is no coordinator process. Every runner simply does what it likes to do.
+Tokimeki is **masterless**. There is no coordinator process. 
 
 Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. Workers can also advertise their maximum lifetime so submission can take remaining time into account when scheduling work.
 
@@ -94,9 +96,9 @@ The manner timer resets every time a job is running or queued. So if jobs keep a
 
 ## Lifetime and burst scheduling
 
-When starting a runner, you can also provide a maximum lifetime such as `--lifetime 48h`. This should match the time you registered with the underlying job system. It does not extend or reduce the actual lifetime of the node by itself, but it gives Tokimeki useful scheduling information.
+When starting a runner, you can also provide a maximum lifetime such as `tokimeki runner --lifetime 48h`. This should match the time you registered with the underlying job system. It does not extend or reduce the actual lifetime of the node by itself, but it gives Tokimeki useful scheduling information.
 
-When submitting a job, you can provide an estimated required runtime with `--burst 8h`. Tokimeki scans the current workers and only dispatches work to a worker whose remaining lifetime can accommodate that burst. If no current worker can finish the job, the CLI reports back: `No worker will be able to finish this job`.
+When submitting a job, you can provide an estimated required runtime with `tokimeki submit --burst 8h`. Tokimeki scans the current workers and only dispatches work to a worker whose remaining lifetime can accommodate that burst. If no current worker can finish the job, the CLI will notify and does not submit the job. This behavior is intended for jobs where resuming is difficult, and must be finished within the worker's lifetime.
 
 
 ## CLI Reference
