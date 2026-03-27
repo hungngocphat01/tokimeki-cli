@@ -1,10 +1,8 @@
-<div style="text-align: center;">
-<h1>🌈 TOKIMEKI</h1>
-</div>
-
-A masterless, filesystem-based job runner.
+<img src="assets/tokimeki.jpeg" style="max-width: 768px;">
 
 ## ❓ What is this?
+
+A masterless, filesystem-based job runner.
 
 Tokimeki lets you submit and manage jobs across nodes that share a common filesystem but have no direct network connectivity. All communication happens through the shared filesystem. No master node, no networking involved at all.
 
