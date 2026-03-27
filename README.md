@@ -22,9 +22,10 @@ Tokimeki solves both. You submit a PBS/SLURM job that starts a Tokimeki Runner, 
 # In the scheduler allocation: start one runner process
 #!/bin/bash
 #PBS -l walltime=24:00:00
-tokimeki runner --id node01 --lifetime 24h --manner-period 30m
+tokimeki runner --id node01 --manner-period 30m
 
-# From login node (or any shared-fs node): submit work at any time
+
+# From any shared fs node: submit work at any time
 tokimeki submit -c "python do_compute.py --alpha 0.001"
 tokimeki submit -w node01 -c "python do_compute.py --alpha 0.001"
 
@@ -34,11 +35,9 @@ tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
 
 # Finished early? enqueue the next experiment in the same allocation
 tokimeki submit eval-script.sh
-
-# The runner is polite and has good manners. It ends its lifecycle after
-# being jobless for 1 hour (default), releasing the node to the underlying
-# job scheduler
 ```
+
+The runner is polite and has good manners. It ends its lifecycle after being jobless for 1 hour (default), releasing the node to the underlying job scheduler.
 
 ## Etymology
 
@@ -58,7 +57,6 @@ go build -o tokimeki \
   -ldflags "-X main.versionCommit=$(git rev-parse --short=12 HEAD) -X main.versionBranch=$(git rev-parse --abbrev-ref HEAD) -X main.versionBuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   ./cmd/tokimeki
 
-# Print embedded build metadata
 tokimeki version
 
 # On a compute node: start a runner
@@ -80,7 +78,9 @@ tokimeki job <job_id>   # job details
 
 Tokimeki is **masterless**. There is no coordinator process. 
 
-Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. Workers can also advertise their maximum lifetime so submission can take remaining time into account when scheduling work.
+Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. 
+
+Runners can also advertise their maximum lifetime so submission can take remaining time into account when scheduling work. Scheduling is done on a voluntary basis, which means runners only pick jobs that's within their execution budget. 
 
 This means:
 
@@ -88,17 +88,17 @@ This means:
 - Adding a new runner is just starting a new process with a unique `--id`.
 - The system tolerates multi-second filesystem propagation delays by design.
 
-## Manner period
+### Manner period
 
 Runners are polite. If a runner has been **jobless** for the manner period (default: 1 hour), it exits gracefully to give place to other jobs on the underlying job system. This also applies on startup — if a runner starts and finds no jobs in its queue, it waits for the manner period and exits if still jobless.
 
 The manner timer resets every time a job is running or queued. So if jobs keep arriving, the runner stays alive indefinitely.
 
-## Lifetime and burst scheduling
+### Lifetime and burst scheduling
 
 When starting a runner, you can also provide a maximum lifetime such as `tokimeki runner --lifetime 48h`. This should match the time you registered with the underlying job system. It does not extend or reduce the actual lifetime of the node by itself, but it gives Tokimeki useful scheduling information.
 
-When submitting a job, you can provide an estimated required runtime with `tokimeki submit --burst 8h`. Tokimeki scans the current workers and only dispatches work to a worker whose remaining lifetime can accommodate that burst. If no current worker can finish the job, the CLI will notify and does not submit the job. This behavior is intended for jobs where resuming is difficult, and must be finished within the worker's lifetime.
+When submitting a job, you can provide an estimated required runtime with `tokimeki submit --burst 8h`. Tokimeki scans the current runners and only dispatches work to a runner whose remaining lifetime can accommodate that burst. If no current runner can finish the job, the CLI will notify and does not submit the job. This behavior is intended for jobs where resuming is difficult, and must be finished within the runner's lifetime.
 
 
 ## CLI Reference
