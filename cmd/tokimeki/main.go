@@ -67,6 +67,7 @@ func main() {
 		runnerCmd(),
 		runnersCmd(),
 		psCmd(),
+		lsCmd(),
 		submitCmd(),
 		execCmd(),
 		killCmd(),
@@ -168,6 +169,24 @@ func psCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "show all jobs including finished")
 	cmd.Flags().StringVarP(&filterWorker, "worker", "w", "", "filter jobs by worker ID")
 	return cmd
+}
+
+// --- ls ---
+
+func lsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "ls",
+		Short: "List jobs, then runners",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := client.New(resolveBase())
+			if err := c.PS("", false); err != nil {
+				return err
+			}
+			fmt.Print("\n\n")
+			return c.Workers()
+		},
+	}
 }
 
 // --- submit ---
