@@ -135,14 +135,18 @@ func runnerCmd() *cobra.Command {
 // --- runners ---
 
 func runnersCmd() *cobra.Command {
-	return &cobra.Command{
+	var showAll bool
+
+	cmd := &cobra.Command{
 		Use:   "runners",
-		Short: "List all registered runners",
+		Short: "List running runners",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			return c.Workers()
+			return c.Workers(showAll)
 		},
 	}
+	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "show all runners including stopped")
+	return cmd
 }
 
 // --- ps ---
@@ -184,7 +188,7 @@ func lsCmd() *cobra.Command {
 				return err
 			}
 			fmt.Print("\n\n")
-			return c.Workers()
+			return c.Workers(false)
 		},
 	}
 }
