@@ -99,6 +99,7 @@ func main() {
 		gcCmd(),
 		eventsCmd(),
 		topCmd(),
+		watchCmd(),
 		versionCmd(),
 	)
 
@@ -239,6 +240,7 @@ func submitCmd() *cobra.Command {
 	var afterCSV string
 	var priority, cpus, memMB, retries int
 	var backoff string
+	var wait bool
 
 	cmd := &cobra.Command{
 		Use:   "submit [script|job_id]",
@@ -292,18 +294,39 @@ Use either:
 				Backoff:        backoff,
 			}
 
+			var jobID string
+			var subErr error
 			if inlineCommand != "" {
 				if len(args) != 0 {
 					return fmt.Errorf("inline submit requires: submit -c <command>")
 				}
 				spec.Command = inlineCommand
-				return c.DirectSubmitCommandSpec(spec, timeout)
+				jobID, subErr = c.DirectSubmitCommandSpecID(spec, timeout)
+			} else {
+				if len(args) != 1 {
+					return fmt.Errorf("script submit requires: submit <script_path>")
+				}
+				jobID, subErr = c.DirectSubmitFileSpecID(spec, args[0], timeout)
 			}
-
-			if len(args) != 1 {
-				return fmt.Errorf("script submit requires: submit <script_path>")
+			if subErr != nil {
+				return subErr
 			}
-			return c.DirectSubmitFileSpec(spec, args[0], timeout)
+			if !wait {
+				return nil
+			}
+			res, err := c.Watch(jobID, client.WatchOpts{})
+			if err != nil {
+				return err
+			}
+			if res.ExitCode != nil {
+				fmt.Printf("[wait %s] %s exit=%d\n", jobID, res.Status, *res.ExitCode)
+				os.Exit(*res.ExitCode)
+			}
+			fmt.Printf("[wait %s] %s\n", jobID, res.Status)
+			if res.Status != protocol.StatusCompleted {
+				os.Exit(1)
+			}
+			return nil
 		},
 	}
 
@@ -317,6 +340,7 @@ Use either:
 	cmd.Flags().IntVar(&memMB, "mem-mb", 0, "required memory in MB (resource hint)")
 	cmd.Flags().IntVar(&retries, "retries", 0, "max retries on failed/crashed (default 0)")
 	cmd.Flags().StringVar(&backoff, "backoff", "", "delay between retries (e.g. 30s, 5m)")
+	cmd.Flags().BoolVar(&wait, "wait", false, "block until job reaches a terminal state; exit with the job's exit code")
 	return cmd
 }
 
@@ -497,6 +521,50 @@ func eventsCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit raw NDJSON")
 	cmd.Flags().StringVar(&jobID, "job", "", "filter to a single job ID")
 	cmd.Flags().StringVar(&since, "since", "", "show events newer than DURATION (e.g. 5m) or RFC3339 timestamp")
+	return cmd
+}
+
+// --- watch ---
+
+func watchCmd() *cobra.Command {
+	var interval time.Duration
+	var quiet bool
+	var timeout time.Duration
+
+	cmd := &cobra.Command{
+		Use:               "watch <job_id>",
+		Short:             "Block until a job reaches a terminal state; exit with the job's exit code",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeJobIDs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := client.New(resolveBase())
+			res, err := c.Watch(args[0], client.WatchOpts{
+				Interval: interval,
+				Quiet:    quiet,
+				Timeout:  timeout,
+			})
+			if err != nil {
+				return err
+			}
+			if !quiet {
+				if res.ExitCode != nil {
+					fmt.Printf("[watch %s] %s exit=%d\n", args[0], res.Status, *res.ExitCode)
+				} else {
+					fmt.Printf("[watch %s] %s\n", args[0], res.Status)
+				}
+			}
+			if res.ExitCode != nil {
+				os.Exit(*res.ExitCode)
+			}
+			if res.Status != protocol.StatusCompleted {
+				os.Exit(1)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().DurationVarP(&interval, "interval", "i", 500*time.Millisecond, "poll interval")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status (or nothing if exit code is 0)")
+	cmd.Flags().DurationVar(&timeout, "timeout", 0, "max wait before giving up (0 = forever)")
 	return cmd
 }
 
