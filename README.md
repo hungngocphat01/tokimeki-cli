@@ -117,16 +117,23 @@ rename() -> final destination
 
 ## CLI Reference
 
-- `tokimeki runner`: start a runner daemon on the current node, optionally with `--lifetime`
+For a complete usage guide with examples, flags, and recipes (dependencies, retries, priority, resource hints, interactive exec, JSON output, event log, shell completion), see **[docs/USAGE.md](docs/USAGE.md)**.
+
+Commands at a glance:
+
+- `tokimeki runner`: start a runner daemon on the current node
 - `tokimeki runners`: list known runners and their liveness
-- `tokimeki ps`: inspect queued and running jobs
-- `tokimeki submit`: submit a script or inline command, optionally with `--burst`
-- `tokimeki exec`: run a one-off command on a target runner
+- `tokimeki ps` / `ls`: inspect queued and running jobs
+- `tokimeki top`: live dashboard of jobs and runners
+- `tokimeki submit`: submit a script or inline command (supports `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--burst`)
+- `tokimeki exec` (`-i` for interactive): run a one-off command on a target runner
 - `tokimeki kill`: stop the currently running job on a runner
 - `tokimeki cancel`: cancel a queued job
-- `tokimeki logs`: show stdout and stderr for a job
+- `tokimeki logs`: show stdout and stderr for a job (`--follow`, `--tail`, `--stdout`, `--stderr`)
 - `tokimeki job`: show job metadata
-- `tokimeki gc`: clean up stale state
+- `tokimeki events`: stream the shared event log
+- `tokimeki gc`: clean up stale state (`--older-than`, `--max-size`, `--dry-run`)
+- `tokimeki completion`: generate shell completion (bash/zsh/fish)
 - `tokimeki version`: print build metadata
 
 ## Configuration
