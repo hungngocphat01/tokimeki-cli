@@ -3,6 +3,7 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -78,29 +79,49 @@ func randomHex(n int) string {
 }
 
 func main() {
+	// Use the actual invocation name (tok, tokimeki, ...) so help text shows
+	// the command the user actually typed.
+	progName := filepath.Base(os.Args[0])
+
 	rootCmd := &cobra.Command{
-		Use:   "tokimeki",
+		Use:   progName,
 		Short: "TOKIMEKI Runners — filesystem-based job submission system",
 	}
 
 	rootCmd.PersistentFlags().StringVar(&baseDir, "base", "", "base directory for state (default: ~/.tokimeki)")
 
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "run", Title: "Run:"},
+		&cobra.Group{ID: "inspect", Title: "Inspect:"},
+		&cobra.Group{ID: "control", Title: "Control:"},
+		&cobra.Group{ID: "maintain", Title: "Maintain:"},
+	)
+
+	add := func(cmd *cobra.Command, group string) *cobra.Command {
+		cmd.GroupID = group
+		return cmd
+	}
+
 	rootCmd.AddCommand(
-		runnerCmd(),
-		runnersCmd(),
-		psCmd(),
-		lsCmd(),
-		submitCmd(),
-		execCmd(),
-		killCmd(),
-		cancelCmd(),
-		logsCmd(),
-		jobCmd(),
-		gcCmd(),
-		eventsCmd(),
-		topCmd(),
-		watchCmd(),
-		versionCmd(),
+		add(runnerCmd(), "run"),
+		add(submitCmd(), "run"),
+
+		add(psCmd(), "inspect"),
+		add(runnersCmd(), "inspect"),
+		add(lsCmd(), "inspect"),
+		add(topCmd(), "inspect"),
+		add(jobCmd(), "inspect"),
+		add(logsCmd(), "inspect"),
+		add(eventsCmd(), "inspect"),
+		add(watchCmd(), "inspect"),
+		add(statsCmd(), "inspect"),
+
+		add(execCmd(), "control"),
+		add(killCmd(), "control"),
+		add(cancelCmd(), "control"),
+
+		add(gcCmd(), "maintain"),
+		add(versionCmd(), "maintain"),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -186,6 +207,7 @@ func runnersCmd() *cobra.Command {
 
 func psCmd() *cobra.Command {
 	var filterWorker string
+	var filterName string
 	var showAll, asJSON bool
 
 	cmd := &cobra.Command{
@@ -201,13 +223,14 @@ func psCmd() *cobra.Command {
 				filterWorker = args[0]
 			}
 			if asJSON {
-				return c.PSJSON(filterWorker, showAll)
+				return c.PSJSON(filterWorker, filterName, showAll)
 			}
-			return c.PS(filterWorker, showAll)
+			return c.PS(filterWorker, filterName, showAll)
 		},
 	}
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "show all jobs including finished")
 	cmd.Flags().StringVarP(&filterWorker, "worker", "w", "", "filter jobs by worker ID")
+	cmd.Flags().StringVar(&filterName, "name", "", "filter jobs by tag (case-insensitive substring)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of a table")
 	return cmd
 }
@@ -215,19 +238,22 @@ func psCmd() *cobra.Command {
 // --- ls ---
 
 func lsCmd() *cobra.Command {
-	return &cobra.Command{
+	var filterName string
+	cmd := &cobra.Command{
 		Use:   "ls",
 		Short: "List jobs, then runners",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			if err := c.PS("", false); err != nil {
+			if err := c.PS("", filterName, false); err != nil {
 				return err
 			}
 			fmt.Print("\n\n")
 			return c.Workers(false)
 		},
 	}
+	cmd.Flags().StringVar(&filterName, "name", "", "filter jobs by tag (case-insensitive substring)")
+	return cmd
 }
 
 // --- submit ---
@@ -240,7 +266,8 @@ func submitCmd() *cobra.Command {
 	var afterCSV string
 	var priority, cpus, memMB, retries int
 	var backoff string
-	var wait bool
+	var name, desc string
+	var wait, quiet, asJSON bool
 
 	cmd := &cobra.Command{
 		Use:   "submit [script|job_id]",
@@ -292,24 +319,62 @@ Use either:
 				User:           user,
 				Retries:        retries,
 				Backoff:        backoff,
+				Name:           name,
+				Desc:           desc,
 			}
 
+			if quiet && asJSON {
+				return fmt.Errorf("--quiet and --json are mutually exclusive")
+			}
+			silent := quiet || asJSON
 			var jobID string
-			var subErr error
 			if inlineCommand != "" {
 				if len(args) != 0 {
 					return fmt.Errorf("inline submit requires: submit -c <command>")
 				}
 				spec.Command = inlineCommand
-				jobID, subErr = c.DirectSubmitCommandSpecID(spec, timeout)
+				if silent {
+					res, err := c.SubmitCommandSpec(spec, timeout)
+					if err != nil {
+						return err
+					}
+					jobID = res.JobID
+					if asJSON {
+						b, _ := json.Marshal(res)
+						fmt.Println(string(b))
+					} else {
+						fmt.Println(res.JobID)
+					}
+				} else {
+					id, err := c.DirectSubmitCommandSpecID(spec, timeout)
+					if err != nil {
+						return err
+					}
+					jobID = id
+				}
 			} else {
 				if len(args) != 1 {
 					return fmt.Errorf("script submit requires: submit <script_path>")
 				}
-				jobID, subErr = c.DirectSubmitFileSpecID(spec, args[0], timeout)
-			}
-			if subErr != nil {
-				return subErr
+				if silent {
+					res, err := c.SubmitFileSpec(spec, args[0], timeout)
+					if err != nil {
+						return err
+					}
+					jobID = res.JobID
+					if asJSON {
+						b, _ := json.Marshal(res)
+						fmt.Println(string(b))
+					} else {
+						fmt.Println(res.JobID)
+					}
+				} else {
+					id, err := c.DirectSubmitFileSpecID(spec, args[0], timeout)
+					if err != nil {
+						return err
+					}
+					jobID = id
+				}
 			}
 			if !wait {
 				return nil
@@ -340,7 +405,11 @@ Use either:
 	cmd.Flags().IntVar(&memMB, "mem-mb", 0, "required memory in MB (resource hint)")
 	cmd.Flags().IntVar(&retries, "retries", 0, "max retries on failed/crashed (default 0)")
 	cmd.Flags().StringVar(&backoff, "backoff", "", "delay between retries (e.g. 30s, 5m)")
+	cmd.Flags().StringVarP(&name, "name", "n", "", "short tag for grouping/filtering (shared, non-unique)")
+	cmd.Flags().StringVar(&desc, "desc", "", "optional free-text description")
 	cmd.Flags().BoolVar(&wait, "wait", false, "block until job reaches a terminal state; exit with the job's exit code")
+	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print only the job ID on success")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print a JSON object {job_id, position, worker, worker_acked}")
 	return cmd
 }
 
@@ -381,28 +450,34 @@ func execCmd() *cobra.Command {
 func killCmd() *cobra.Command {
 	var sig int
 	var timeout time.Duration
+	var worker string
 
 	cmd := &cobra.Command{
-		Use:   "kill <worker_id> <job_id>",
+		Use:   "kill <job_id>",
 		Short: "Send a signal to a running job",
-		Args:  cobra.ExactArgs(2),
+		Long: `Send a signal to a running job. The owning runner is resolved from the
+job's meta.json automatically — pass --worker to override (rare; useful
+only when meta is missing or corrupt).`,
+		Args: cobra.ExactArgs(1),
 		ValidArgsFunction: func(_ *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) == 0 {
-				return completeWorkerIDs(nil, args, toComplete)
-			}
-			if len(args) == 1 {
 				return completeJobIDs(nil, args, toComplete)
 			}
 			return nil, cobra.ShellCompDirectiveNoFileComp
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			return c.Kill(args[0], args[1], sig, timeout)
+			jobID := args[0]
+			if worker != "" {
+				return c.Kill(worker, jobID, sig, timeout)
+			}
+			return c.KillJob(jobID, sig, timeout)
 		},
 	}
 
 	cmd.Flags().IntVar(&sig, "signal", 15, "signal number to send")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
+	cmd.Flags().StringVar(&worker, "worker", "", "explicit worker ID (override meta lookup)")
 	return cmd
 }
 
@@ -474,18 +549,23 @@ func jobCmd() *cobra.Command {
 // --- top ---
 
 func topCmd() *cobra.Command {
-	var interval time.Duration
-	var once bool
+	var plain bool
 	cmd := &cobra.Command{
 		Use:   "top",
-		Short: "Live read-only dashboard of runners and jobs",
+		Short: "One-shot dashboard combining runners, jobs, and recently-finished jobs",
+		Long: `Print a single dashboard frame combining runners, jobs, and recently-finished
+jobs and exit. For auto-refresh, pipe through watch(1):
+
+  watch -n 3 tok top
+
+This is intentionally one-shot — watch(1) does double-buffered redraw without
+flicker, so we don't reimplement it here.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			return c.Top(client.TopOpts{Interval: interval, Once: once})
+			return c.Top(client.TopOpts{Plain: plain})
 		},
 	}
-	cmd.Flags().DurationVarP(&interval, "interval", "i", time.Second, "refresh interval")
-	cmd.Flags().BoolVar(&once, "once", false, "render one frame and exit")
+	cmd.Flags().BoolVar(&plain, "plain", false, "skip box borders and colors (auto on non-TTY)")
 	return cmd
 }
 
@@ -565,6 +645,33 @@ func watchCmd() *cobra.Command {
 	cmd.Flags().DurationVarP(&interval, "interval", "i", 500*time.Millisecond, "poll interval")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status (or nothing if exit code is 0)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "max wait before giving up (0 = forever)")
+	return cmd
+}
+
+// --- stats ---
+
+func statsCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "stats",
+		Short: "Show CPU / RAM / GPU usage of currently running jobs across all runners",
+		Long: `Show a snapshot of resource usage for every job currently running on a
+runner. Each runner samples its own job once per tick (~1s) and writes
+the result to workers/<id>/stats.json; this command reads those files.
+
+Linux + NVIDIA only — on other platforms or when nvidia-smi is missing,
+the GPU columns show "n/a". CPU% can exceed 100% on multi-threaded jobs
+(it's the sum across cores, like ` + "`top`" + ` in irix mode).`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := client.New(resolveBase())
+			if asJSON {
+				return c.StatsJSON()
+			}
+			return c.Stats()
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON for machine consumers")
 	return cmd
 }
 

@@ -11,9 +11,11 @@ CLI reference and recipes for the `tokimeki` binary. See `README.md` for archite
   - [Submit work](#submit-work)
   - [Inspect state](#inspect-state)
   - [Control running jobs](#control-running-jobs)
+  - [Wait for a job](#wait-for-a-job)
   - [Logs and history](#logs-and-history)
   - [Cleanup](#cleanup)
   - [Live debugging on a runner](#live-debugging-on-a-runner)
+  - [Resource usage across all runners (`tok stats`)](#resource-usage-across-all-runners-tok-stats)
 - [Scheduling features](#scheduling-features)
   - [Dependencies (`--after`)](#dependencies---after)
   - [Priority (`--priority`)](#priority---priority)
@@ -37,6 +39,48 @@ export TOKIMEKI_HOME=/shared-fs/tokimeki   # or use --base on every command
 
 Defaults to `~/.tokimeki`. On a cluster, point this at a shared filesystem visible to every node that runs a runner or submits jobs.
 
+### Short alias (`tok`)
+
+Symlink the binary to a shorter name on your `$PATH`:
+
+```bash
+ln -s "$(which tokimeki)" ~/.local/bin/tok
+# or
+sudo ln -s "$(which tokimeki)" /usr/local/bin/tok
+```
+
+`tok` and `tokimeki` are the same binary. Examples in this doc use `tok`.
+
+### Colors
+
+CLI output is colorized when stdout is a TTY. Disable with:
+
+```bash
+NO_COLOR=1 tok ps
+```
+
+Pipes / redirects / non-interactive sessions automatically skip ANSI colors and box-drawing characters.
+
+### Timezone
+
+Timestamps in `tok ps` and `tok runners` (the `STARTED` columns) are formatted in your local timezone. Override with the standard `TZ` env var:
+
+```bash
+TZ=Asia/Tokyo tok ps          # JST (GMT+9)
+TZ=America/New_York tok ps    # ET
+TZ=UTC tok ps                 # back to UTC
+```
+
+Persist it for the shell session:
+
+```bash
+export TZ=Asia/Tokyo
+```
+
+Or system-wide via `/etc/timezone` (Linux) — Go's `time.Local` reads it.
+
+JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human-readable tables convert.
+
 ---
 
 ## Quick reference
@@ -44,15 +88,17 @@ Defaults to `~/.tokimeki`. On a cluster, point this at a shared filesystem visib
 | Command | One-liner |
 |---|---|
 | `runner` | Start the daemon on this node |
-| `submit` | Queue a job (script or inline command) |
+| `submit` | Queue a job (script or inline command); supports `--wait`, `--quiet`, `--json` |
 | `ps` | List running/queued jobs |
 | `runners` | List runners and heartbeat status |
 | `ls` | `ps` + `runners` together |
-| `top` | Live dashboard, refreshes each tick |
+| `top` | One-shot dashboard combining runners + jobs + recent jobs (use `watch -n 3 tok top` for auto-refresh) |
+| `stats` | Snapshot of CPU/RAM/GPU usage across all running jobs |
 | `job <id>` | Show full job metadata + script |
 | `logs <id>` | Print stdout/stderr (with `--follow`, `--tail`) |
+| `watch <id>` | Block until terminal state; exit code = job's exit code |
 | `events` | Stream the shared event log |
-| `kill` | Send signal to a running job |
+| `kill <job_id>` | Send signal to a running job (auto-resolves runner) |
 | `cancel` | Remove a queued job |
 | `exec` | Run an ad-hoc command on a runner |
 | `gc` | Garbage-collect old jobs and dead workers |
@@ -109,6 +155,23 @@ tokimeki submit -r -w w-gpu01 abc12345
 
 All scheduling flags are stackable on submit: `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`. See [scheduling features](#scheduling-features).
 
+#### Output modes (`--quiet`, `--json`, `--wait`)
+
+For shell scripts and AI agents:
+
+```bash
+# Just the job ID, nothing else
+JOB=$(tok submit --quiet -c "python train.py")
+
+# JSON envelope: {"job_id":"...","position":3,"worker":"...","worker_acked":false}
+tok submit --json -c "python train.py" | jq .job_id
+
+# Submit, then block until done — exit code propagates from the job
+tok submit --wait -c "python train.py"
+```
+
+`--quiet` and `--json` are mutually exclusive. `--wait` can be combined with either.
+
 ### Inspect state
 
 Active jobs:
@@ -119,6 +182,10 @@ tokimeki ps -a             # include finished
 tokimeki ps -w w-gpu01     # filter by worker
 tokimeki ps --json | jq    # machine-readable
 ```
+
+The `COMMAND` column collapses long absolute paths to the script's basename when it can — `bash /home/.../train_llama.sh` shows as `train_llama.sh`. Recognized launchers: `bash`, `sh`, `zsh`, `python[2/3]`, `node`, `deno`, `bun`, `ruby`, `perl`, `lua`, `Rscript`. Other commands are shown verbatim (truncated to 40 chars).
+
+A `PRIO` column appears only when at least one visible job has a non-zero priority; otherwise it's hidden to reduce noise. Sort within each status group is `priority desc, submitted_at asc`.
 
 Runners:
 
@@ -135,13 +202,21 @@ tokimeki job abc12345           # human form (meta + script)
 tokimeki job abc12345 --json    # meta only
 ```
 
-Live dashboard:
+Combined dashboard (one-shot):
 
 ```bash
-tokimeki top                 # refresh every 1s
-tokimeki top -i 500ms        # faster
-tokimeki top --once          # one frame, exit (good for scripts)
+tok top                      # print runners + jobs + recent, then exit
+tok top --plain              # no box borders, plain sections (good for piping)
+watch -n 3 tok top           # auto-refresh via watch(1) — no flicker
 ```
+
+Three panels:
+
+- **RUNNERS** — live workers + heartbeat age
+- **JOBS** — running + queued (sorted by priority then FIFO)
+- **RECENT** — last 8 jobs that finished within the past 10 minutes, with exit code
+
+`tok top` is intentionally one-shot. `watch(1)` already does double-buffered redraw without flicker, so we don't reimplement an in-process loop. When stdout is not a TTY (pipe / redirect / agent), borders and colors are skipped automatically.
 
 ### Control running jobs
 
@@ -154,8 +229,30 @@ tokimeki cancel abc12345
 Send a signal to a running job:
 
 ```bash
-tokimeki kill w-gpu01 abc12345              # SIGTERM (15)
-tokimeki kill w-gpu01 abc12345 --signal 9   # SIGKILL
+tok kill abc12345                  # SIGTERM (15) — runner resolved from meta
+tok kill abc12345 --signal 9       # SIGKILL
+tok kill abc12345 --worker w-gpu01 # explicit worker (rare; only if meta is corrupt)
+```
+
+The owning runner is looked up from the job's `meta.json` automatically — no need to remember which worker is running it. Use `tok cancel <job_id>` for queued jobs that haven't started yet.
+
+### Wait for a job
+
+```bash
+tok watch <job_id>            # block until terminal; exits with job's exit code
+tok watch <job_id> --quiet    # suppress progress lines; only final status
+tok watch <job_id> --timeout 5m  # give up after 5 minutes (exit non-zero)
+```
+
+Use this in CI / agent scripts that need to make a decision based on a job's outcome:
+
+```bash
+JOB=$(tok submit --quiet -c "./build.sh")
+if tok watch "$JOB" --quiet; then
+  echo "build ok"
+else
+  echo "build failed (exit $?)"
+fi
 ```
 
 ### Logs and history
@@ -203,6 +300,49 @@ tokimeki exec w-gpu01 -i psql -d mydb
 ```
 
 Use `Ctrl-D` to close stdin and exit. For full-screen TUIs, use your cluster's interactive job mechanism (`qsub -I`, `srun --pty`) instead.
+
+### Resource usage across all runners (`tok stats`)
+
+```bash
+tok stats          # snapshot table
+tok stats --json   # machine-readable
+```
+
+Example output:
+
+```
+RUNNER    HOST          JOB       PID      CPU%  RSS    GPU%  GPU_MEM  PROCS  AGE
+trainer1  spcc-a100g09  9a1cb1c6  1196193  450   12.3G  87%   18.0G    24     1s
+trainer2  spcc-a100g01  32ce852e  1910257  102   3.4G   45%   5.0G     8      <1s
+trainer3  spcc-a100g01  5ff7f693  2940210  380   8.7G   92%   15.0G    22     2s
+```
+
+How it works:
+
+- Each runner samples its own running child process every tick (~1s) — read from `/proc/<pid>/stat` (CPU + threads), `/proc/<pid>/status` (RSS), and `nvidia-smi` (GPU mem + per-process SM utilization).
+- Sample is written to `workers/<id>/stats.json` via atomic rename.
+- `tok stats` just reads those files from shared FS — no SSH, no RPC.
+- The `AGE` column is the staleness of the sample. Anything ≤ a few seconds is current.
+
+What you can use this for:
+
+- Check whether jobs are CPU-bound (CPU% pinned at `cores × 100`) vs GPU-bound (high `GPU%`) vs idle (low both).
+- Spot under-utilized GPU runs (e.g. `GPU% = 20%` when it should be ≥ 80% — likely dataloader bottleneck).
+- See which runner is RAM-pressured before OOM hits.
+
+CPU% and GPU% cells are colored by tier so under-utilization stands out:
+
+| Metric | 🟢 green | 🟡 yellow | 🔴 red |
+|---|---|---|---|
+| GPU% (SM utilization) | ≥ 80 | 40–79 | < 40 |
+| CPU% (sum across cores) | ≥ 200 | 50–199 | < 50 |
+
+Caveats:
+
+- Linux + NVIDIA only. On macOS / non-NVIDIA hosts, GPU columns are `n/a` and CPU/RSS are empty.
+- CPU% sums across cores: a 16-thread job on 16 cores reports `1600%`, like `top -1`.
+- Sampling tree includes descendants — a Python parent that spawns CUDA workers is reported as one bundle.
+- Idle runners don't show up; only currently-running jobs.
 
 ---
 
@@ -277,10 +417,12 @@ The CLI refuses to submit if no runner has at least 30 minutes of remaining life
 Stable JSON for scripting:
 
 ```bash
-tokimeki ps --json
-tokimeki runners --json
-tokimeki job abc12345 --json
-tokimeki events --json
+tok ps --json
+tok runners --json
+tok job abc12345 --json
+tok events --json
+tok submit --json -c "..."   # {job_id, position, worker, worker_acked}
+tok stats --json             # array of {worker_id, job_id, pid, cpu_percent, rss_bytes, gpu_util_percent, gpu_mem_bytes, ...}
 ```
 
 Field names follow the docs at `docs/SPEC.md` and the Go types in `engine/protocol/types.go`. New fields may be added; existing ones are stable.
@@ -327,7 +469,7 @@ tokimeki completion fish > ~/.config/fish/completions/tokimeki.fish
 
 Then `<tab>` completes:
 
-- worker IDs after `kill`, `exec`, `submit -r -w`
+- worker IDs after `exec`, `submit -r -w`, `kill --worker`
 - job IDs after `cancel`, `kill`, `logs`, `job`
 
 ---
@@ -337,7 +479,9 @@ Then `<tab>` completes:
 | Variable | Purpose | Default |
 |---|---|---|
 | `TOKIMEKI_HOME` | Base directory for all state | `~/.tokimeki` |
+| `TZ` | Timezone for `STARTED` columns in `tok ps` / `tok runners` (per-process; doesn't affect other users or system clock) | system default |
 | `USER` | Recorded as `user` on submitted jobs (for future fair-share) | (empty if unset) |
+| `NO_COLOR` | Disable ANSI color even on TTY | unset |
 
 The `--base` flag overrides `TOKIMEKI_HOME`.
 

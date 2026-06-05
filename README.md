@@ -30,7 +30,7 @@ tokimeki submit do_compute.sh
 # Wrong config? replace process immediately without re-entering scheduler queue
 tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
 #                ^~~~ submits directly to node01
-tokimeki kill node01 <old_job_id>
+tokimeki kill <old_job_id>
 
 # Finished early? enqueue the next experiment in the same allocation
 tokimeki submit eval-script.sh
@@ -124,8 +124,9 @@ Commands at a glance:
 - `tokimeki runner`: start a runner daemon on the current node
 - `tokimeki runners`: list known runners and their liveness
 - `tokimeki ps` / `ls`: inspect queued and running jobs
-- `tokimeki top`: live dashboard of jobs and runners
-- `tokimeki submit`: submit a script or inline command (supports `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--burst`)
+- `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
+- `tokimeki submit`: submit a script or inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--burst`, `--wait`, `--quiet`, `--json`)
+- `tokimeki watch <job>`: block until terminal state; exit code = job's exit code
 - `tokimeki exec` (`-i` for interactive): run a one-off command on a target runner
 - `tokimeki kill`: stop the currently running job on a runner
 - `tokimeki cancel`: cancel a queued job
@@ -135,6 +136,8 @@ Commands at a glance:
 - `tokimeki gc`: clean up stale state (`--older-than`, `--max-size`, `--dry-run`)
 - `tokimeki completion`: generate shell completion (bash/zsh/fish)
 - `tokimeki version`: print build metadata
+
+The binary can also be aliased to `tok` for brevity (`ln -s "$(which tokimeki)" ~/.local/bin/tok`); `tok` and `tokimeki` are interchangeable.
 
 ## Configuration
 
