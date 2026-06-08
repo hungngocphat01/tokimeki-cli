@@ -21,7 +21,6 @@ CLI reference and recipes for the `tokimeki` binary. See `README.md` for archite
   - [Priority (`--priority`)](#priority---priority)
   - [Resource hints (`--cpus`, `--mem-mb`)](#resource-hints---cpus---mem-mb)
   - [Retries (`--retries`, `--backoff`)](#retries---retries---backoff)
-  - [Burst scheduling](#burst-scheduling)
 - [JSON output](#json-output)
 - [Event log](#event-log)
 - [Shell completion](#shell-completion)
@@ -399,16 +398,6 @@ tokimeki submit --retries 3 --backoff 30s ./flaky.sh
 Each retry creates a new job ID with `orig_job` set to the original. View the chain via `events --job <orig>` (events for an original job currently — retries get new IDs; we may add a chain field later).
 
 `--backoff` accepts duration strings: `30s`, `5m`, `1h`. The retry sits in the queue with a `not_before` time, blocking dequeue until elapsed.
-
-### Burst scheduling
-
-For jobs that must run uninterrupted within a runner's `--manner-period`:
-
-```bash
-tokimeki submit --burst 30m ./short-burst.sh
-```
-
-The CLI refuses to submit if no runner has at least 30 minutes of remaining lifetime. Use this for jobs that can't checkpoint and resume.
 
 ---
 
