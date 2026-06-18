@@ -30,7 +30,7 @@ tokimeki submit do_compute.sh
 # Wrong config? replace process immediately without re-entering scheduler queue
 tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
 #                ^~~~ submits directly to node01
-tokimeki kill node01 <old_job_id>
+tokimeki kill <old_job_id>
 
 # Finished early? enqueue the next experiment in the same allocation
 tokimeki submit eval-script.sh
@@ -59,11 +59,10 @@ go build -o tokimeki \
 tokimeki version
 
 # On a compute node: start a runner
-tokimeki runner --id node01 --lifetime 48h
+tokimeki runner --id node01
 
 # From anywhere: submit a job (works even before the runner starts)
 tokimeki submit solve.sh
-tokimeki submit --burst 8h important-job.sh
 
 # Check status
 tokimeki runners        # list all runners
@@ -79,8 +78,6 @@ Tokimeki is **masterless**. There is no coordinator process.
 
 Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. 
 
-Runners can also advertise their maximum lifetime so submission can take remaining time into account when scheduling work. Scheduling is done on a voluntary basis, which means runners only pick jobs that's within their execution budget. 
-
 This means:
 
 - No single point of failure. Runners are independent.
@@ -92,13 +89,6 @@ This means:
 Runners are polite. If a runner has been **jobless** for the manner period (default: 1 hour), it exits gracefully to give place to other jobs on the underlying job system. This also applies on startup — if a runner starts and finds no jobs in its queue, it waits for the manner period and exits if still jobless.
 
 The manner timer resets every time a job is running or queued. So if jobs keep arriving, the runner stays alive indefinitely.
-
-### Lifetime and burst scheduling
-
-When starting a runner, you can also provide a maximum lifetime such as `tokimeki runner --lifetime 48h`. This should match the time you registered with the underlying job system. It does not extend or reduce the actual lifetime of the node by itself, but it gives Tokimeki useful scheduling information.
-
-When submitting a job, you can provide an estimated required runtime with `tokimeki submit --burst 8h`. Tokimeki scans the current runners and only dispatches work to a runner whose remaining lifetime can accommodate that burst. If no current runner can finish the job, the CLI will notify and does not submit the job. This behavior is intended for jobs where resuming is difficult, and must be finished within the runner's lifetime.
-
 
 ### Communication protocol: atomic writes
 
@@ -117,17 +107,27 @@ rename() -> final destination
 
 ## CLI Reference
 
-- `tokimeki runner`: start a runner daemon on the current node, optionally with `--lifetime`
+For a complete usage guide with examples, flags, and recipes (dependencies, retries, priority, resource hints, interactive exec, JSON output, event log, shell completion), see **[docs/USAGE.md](docs/USAGE.md)**.
+
+Commands at a glance:
+
+- `tokimeki runner`: start a runner daemon on the current node
 - `tokimeki runners`: list known runners and their liveness
-- `tokimeki ps`: inspect queued and running jobs
-- `tokimeki submit`: submit a script or inline command, optionally with `--burst`
-- `tokimeki exec`: run a one-off command on a target runner
+- `tokimeki ps` / `ls`: inspect queued and running jobs
+- `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
+- `tokimeki submit`: submit a script or inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--name`, `--desc`, `--wait`, `--quiet`, `--json`)
+- `tokimeki watch <job>`: block until terminal state; exit code = job's exit code
+- `tokimeki exec` (`-i` for interactive): run a one-off command on a target runner
 - `tokimeki kill`: stop the currently running job on a runner
 - `tokimeki cancel`: cancel a queued job
-- `tokimeki logs`: show stdout and stderr for a job
+- `tokimeki logs`: show stdout and stderr for a job (`--follow`, `--tail`, `--stdout`, `--stderr`)
 - `tokimeki job`: show job metadata
-- `tokimeki gc`: clean up stale state
+- `tokimeki events`: stream the shared event log
+- `tokimeki gc`: clean up stale state (`--older-than`, `--max-size`, `--dry-run`)
+- `tokimeki completion`: generate shell completion (bash/zsh/fish)
 - `tokimeki version`: print build metadata
+
+The binary can also be aliased to `tok` for brevity (`ln -s "$(which tokimeki)" ~/.local/bin/tok`); `tok` and `tokimeki` are interchangeable.
 
 ## Configuration
 
