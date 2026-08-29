@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ngocphat/tokimeki/client"
+	"github.com/ngocphat/tokimeki/master"
 	"github.com/ngocphat/tokimeki/protocol"
 	"github.com/ngocphat/tokimeki/registry"
 	"github.com/ngocphat/tokimeki/runner"
@@ -85,10 +86,10 @@ func main() {
 
 	rootCmd := &cobra.Command{
 		Use:   progName,
-		Short: "TOKIMEKI Runners — filesystem-based job submission system",
+		Short: "TOKIMEKI Runners — job submission system",
 	}
 
-	rootCmd.PersistentFlags().StringVar(&baseDir, "base", "", "base directory for state (default: ~/.tokimeki)")
+	rootCmd.PersistentFlags().StringVar(&baseDir, "base", "", "filesystem state directory (default: ~/.tokimeki; ignored in master mode)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "run", Title: "Run:"},
@@ -121,12 +122,47 @@ func main() {
 		add(cancelCmd(), "control"),
 
 		add(gcCmd(), "maintain"),
+		add(masterCmd(), "maintain"),
 		add(versionCmd(), "maintain"),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
+}
+
+// --- master ---
+
+func masterCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "master",
+		Short: "Manage the PostgreSQL master backend",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "init",
+		Short: "Initialize the PostgreSQL master schema",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			dsn, ok, err := master.ResolveDSN()
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("master init requires TOKIMEKI_MASTER or ~/.tokimeki.conn")
+			}
+			store, err := master.Open(dsn)
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			if err := store.Init(cmd.Context()); err != nil {
+				return err
+			}
+			fmt.Println("PostgreSQL Tokimeki master initialized.")
+			return nil
+		},
+	})
+	return cmd
 }
 
 // --- runner ---

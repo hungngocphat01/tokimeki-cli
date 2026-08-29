@@ -2,9 +2,9 @@
 
 ## ❓ What is this?
 
-A masterless, filesystem-based job runner.
+A job runner with either a shared-filesystem backend or a PostgreSQL master backend.
 
-Tokimeki lets you submit and manage jobs across nodes that share a common filesystem but have no direct network connectivity. All communication happens through the shared filesystem. No master node, no networking involved at all.
+Tokimeki lets you submit and manage jobs across worker nodes. By default, workers communicate through a shared filesystem. Set a PostgreSQL master connection to use a central, durable database instead; workers then need only network access to PostgreSQL.
 
 ## ❓ Why Tokimeki?
 
@@ -74,7 +74,7 @@ tokimeki job <job_id>   # job details
 
 ## Architecture
 
-Tokimeki is **masterless**. There is no coordinator process. 
+Tokimeki is **masterless by default**. The filesystem backend has no coordinator process. PostgreSQL mode uses the database as the central durable coordination point; it does not require a Tokimeki server process.
 
 Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. 
 
@@ -124,6 +124,7 @@ Commands at a glance:
 - `tokimeki job`: show job metadata
 - `tokimeki events`: stream the shared event log
 - `tokimeki gc`: clean up stale state (`--older-than`, `--max-size`, `--dry-run`)
+- `tokimeki master init`: initialize the configured PostgreSQL master schema
 - `tokimeki completion`: generate shell completion (bash/zsh/fish)
 - `tokimeki version`: print build metadata
 
@@ -133,4 +134,13 @@ The binary can also be aliased to `tok` for brevity (`ln -s "$(which tokimeki)" 
 
 | Environment Variable | Description | Default |
 |---|---|---|
-| `TOKIMEKI_HOME` | Base directory for all state | `~/.tokimeki` |
+| `TOKIMEKI_MASTER` | PostgreSQL connection string; takes priority over filesystem mode | unset |
+| `TOKIMEKI_HOME` | Base directory for filesystem state | `~/.tokimeki` |
+
+Backend selection is deterministic: `TOKIMEKI_MASTER`, then `~/.tokimeki.conn` (a text file containing a PostgreSQL connection string), then the filesystem backend. Initialize a new PostgreSQL database once before starting workers:
+
+```bash
+export TOKIMEKI_MASTER='postgres://tokimeki:password@db.example/tokimeki?sslmode=require'
+tokimeki master init
+tokimeki runner --id node01
+```

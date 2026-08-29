@@ -30,13 +30,25 @@ CLI reference and recipes for the `tokimeki` binary. See `README.md` for archite
 
 ## Setup
 
-State directory:
+Filesystem mode state directory:
 
 ```bash
 export TOKIMEKI_HOME=/shared-fs/tokimeki   # or use --base on every command
 ```
 
 Defaults to `~/.tokimeki`. On a cluster, point this at a shared filesystem visible to every node that runs a runner or submits jobs.
+
+### PostgreSQL master mode
+
+For workers that do not share a filesystem, configure every client and runner with the same PostgreSQL connection string, then initialize the schema once:
+
+```bash
+export TOKIMEKI_MASTER='postgres://tokimeki:password@db.example/tokimeki?sslmode=require'
+tok master init
+tok runner --id w-gpu01
+```
+
+`TOKIMEKI_MASTER` takes priority. If it is unset, Tokimeki reads `~/.tokimeki.conn` when that file exists; otherwise it uses the filesystem mode above. `--base` and `TOKIMEKI_HOME` apply only to filesystem mode.
 
 ### Short alias (`tok`)
 
@@ -101,10 +113,11 @@ JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human
 | `cancel` | Remove a queued job |
 | `exec` | Run an ad-hoc command on a runner |
 | `gc` | Garbage-collect old jobs and dead workers |
+| `master init` | Initialize the configured PostgreSQL master schema |
 | `version` | Build/version info |
 | `completion` | Generate shell completion |
 
-Every command accepts `--base PATH` to override `TOKIMEKI_HOME`.
+Every command accepts `--base PATH` to override `TOKIMEKI_HOME` in filesystem mode.
 
 ---
 
