@@ -2,10 +2,13 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -79,6 +82,7 @@ func randomHex(n int) string {
 }
 
 func main() {
+	os.Args = normalizeLogIndexArgs(os.Args)
 	// Use the actual invocation name (tok, tokimeki, ...) so help text shows
 	// the command the user actually typed.
 	progName := filepath.Base(os.Args[0])
@@ -117,6 +121,7 @@ func main() {
 		add(statsCmd(), "inspect"),
 
 		add(execCmd(), "control"),
+		add(kpCmd(), "control"),
 		add(killCmd(), "control"),
 		add(cancelCmd(), "control"),
 
@@ -267,19 +272,24 @@ func submitCmd() *cobra.Command {
 	var priority, cpus, memMB, retries int
 	var backoff string
 	var name, desc string
-	var wait, quiet, asJSON bool
+	var wait, quiet, asJSON, live bool
 
 	cmd := &cobra.Command{
-		Use:   "submit [script|job_id]",
+		Use:   "submit [scripts...]",
 		Short: "Submit a job to the global queue",
 		Long: `Submit work to the global queue.
 Use either:
 - a script path argument
 - --command/-c for an inline command
 - -r/--resubmit with a job ID (requires running daemon and --worker).`,
-		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
+			if live && (quiet || asJSON) {
+				return fmt.Errorf("--live cannot be combined with --quiet or --json")
+			}
+			if live && resubmit {
+				return fmt.Errorf("--live cannot be combined with --resubmit")
+			}
 
 			if resubmit {
 				if len(args) != 1 {
@@ -326,70 +336,92 @@ Use either:
 			if quiet && asJSON {
 				return fmt.Errorf("--quiet and --json are mutually exclusive")
 			}
+			if live {
+				var paths []string
+				if inlineCommand == "" {
+					if len(args) == 0 {
+						return fmt.Errorf("script submit requires: submit <script_path> [script_path...]")
+					}
+					paths = args
+				} else if len(args) != 0 {
+					return fmt.Errorf("inline submit requires: submit -c <command>")
+				}
+				targets := []string{workerID}
+				if inlineCommand == "" {
+					var err error
+					targets, err = submitTargets(os.Args, cmd, len(paths))
+					if err != nil {
+						return err
+					}
+				}
+				var ids []string
+				for i := range targets {
+					spec.TargetWorkerID = targets[i]
+					spec.Command = inlineCommand
+					path := ""
+					if inlineCommand == "" {
+						path = paths[i]
+					}
+					res, err := submitLiveOne(c, spec, path, timeout)
+					if err != nil {
+						return err
+					}
+					ids = append(ids, res.JobID)
+				}
+				return runLiveJobs(c, ids)
+			}
 			silent := quiet || asJSON
-			var jobID string
+			var jobs []string
 			if inlineCommand != "" {
 				if len(args) != 0 {
 					return fmt.Errorf("inline submit requires: submit -c <command>")
 				}
 				spec.Command = inlineCommand
-				if silent {
-					res, err := c.SubmitCommandSpec(spec, timeout)
-					if err != nil {
-						return err
-					}
-					jobID = res.JobID
-					if asJSON {
-						b, _ := json.Marshal(res)
-						fmt.Println(string(b))
-					} else {
-						fmt.Println(res.JobID)
-					}
-				} else {
-					id, err := c.DirectSubmitCommandSpecID(spec, timeout)
-					if err != nil {
-						return err
-					}
-					jobID = id
+				id, err := submitOne(c, spec, "", silent, asJSON, timeout)
+				if err != nil {
+					return err
 				}
+				jobs = append(jobs, id)
 			} else {
-				if len(args) != 1 {
-					return fmt.Errorf("script submit requires: submit <script_path>")
+				if len(args) == 0 {
+					return fmt.Errorf("script submit requires: submit <script_path> [script_path...]")
 				}
-				if silent {
-					res, err := c.SubmitFileSpec(spec, args[0], timeout)
+				targets, err := submitTargets(os.Args, cmd, len(args))
+				if err != nil {
+					return err
+				}
+				for i, path := range args {
+					spec.TargetWorkerID = targets[i]
+					id, err := submitOne(c, spec, path, silent, asJSON, timeout)
 					if err != nil {
-						return err
+						return fmt.Errorf("submit %s: %w", path, err)
 					}
-					jobID = res.JobID
-					if asJSON {
-						b, _ := json.Marshal(res)
-						fmt.Println(string(b))
-					} else {
-						fmt.Println(res.JobID)
-					}
-				} else {
-					id, err := c.DirectSubmitFileSpecID(spec, args[0], timeout)
-					if err != nil {
-						return err
-					}
-					jobID = id
+					jobs = append(jobs, id)
 				}
 			}
 			if !wait {
 				return nil
 			}
-			res, err := c.Watch(jobID, client.WatchOpts{})
-			if err != nil {
-				return err
+			failureCode := 0
+			for _, jobID := range jobs {
+				res, err := c.Watch(jobID, client.WatchOpts{})
+				if err != nil {
+					return err
+				}
+				if res.ExitCode != nil {
+					fmt.Printf("[wait %s] %s exit=%d\n", jobID, res.Status, *res.ExitCode)
+					if *res.ExitCode != 0 && failureCode == 0 {
+						failureCode = *res.ExitCode
+					}
+				} else {
+					fmt.Printf("[wait %s] %s\n", jobID, res.Status)
+					if res.Status != protocol.StatusCompleted && failureCode == 0 {
+						failureCode = 1
+					}
+				}
 			}
-			if res.ExitCode != nil {
-				fmt.Printf("[wait %s] %s exit=%d\n", jobID, res.Status, *res.ExitCode)
-				os.Exit(*res.ExitCode)
-			}
-			fmt.Printf("[wait %s] %s\n", jobID, res.Status)
-			if res.Status != protocol.StatusCompleted {
-				os.Exit(1)
+			if failureCode != 0 {
+				os.Exit(failureCode)
 			}
 			return nil
 		},
@@ -408,9 +440,239 @@ Use either:
 	cmd.Flags().StringVarP(&name, "name", "n", "", "short tag for grouping/filtering (shared, non-unique)")
 	cmd.Flags().StringVar(&desc, "desc", "", "optional free-text description")
 	cmd.Flags().BoolVar(&wait, "wait", false, "block until job reaches a terminal state; exit with the job's exit code")
+	cmd.Flags().BoolVarP(&live, "live", "l", false, "show assignment and stream job output until completion; Ctrl-C leaves the job running")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print only the job ID on success")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print a JSON object {job_id, position, worker, worker_acked}")
 	return cmd
+}
+
+func submitOne(c *client.Client, spec protocol.JobSpec, path string, silent, asJSON bool, timeout time.Duration) (string, error) {
+	if !silent {
+		if path == "" {
+			return c.DirectSubmitCommandSpecID(spec, timeout)
+		}
+		return c.DirectSubmitFileSpecID(spec, path, timeout)
+	}
+	var res client.SubmitResult
+	var err error
+	if path == "" {
+		res, err = c.SubmitCommandSpec(spec, timeout)
+	} else {
+		res, err = c.SubmitFileSpec(spec, path, timeout)
+	}
+	if err != nil {
+		return "", err
+	}
+	if asJSON {
+		b, err := json.Marshal(res)
+		if err != nil {
+			return "", err
+		}
+		fmt.Println(string(b))
+	} else {
+		fmt.Println(res.JobID)
+	}
+	return res.JobID, nil
+}
+
+func submitLiveOne(c *client.Client, spec protocol.JobSpec, path string, timeout time.Duration) (client.SubmitResult, error) {
+	var res client.SubmitResult
+	var err error
+	if path == "" {
+		res, err = c.SubmitCommandSpec(spec, timeout)
+	} else {
+		res, err = c.SubmitFileSpec(spec, path, timeout)
+	}
+	if err != nil {
+		return res, err
+	}
+	fmt.Printf("Job %s submitted to global queue\n", res.JobID)
+	if res.Position > 0 {
+		fmt.Printf("Global queue position: %d\n", res.Position)
+	}
+	if res.Worker != "" {
+		fmt.Printf("Target runner: %s\n", res.Worker)
+	}
+	if res.WorkerAcked {
+		fmt.Println("Worker acknowledgment: received")
+	} else {
+		fmt.Println("Worker acknowledgment: pending")
+	}
+	return res, nil
+}
+
+func runLiveJobs(c *client.Client, ids []string) error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	reg := registry.New(protocol.NewPaths(resolveBase()))
+	failureCode := 0
+	for _, id := range ids {
+		code, err := streamLiveJob(ctx, c, reg, id)
+		if errors.Is(err, context.Canceled) {
+			fmt.Println("\nLive stream stopped. Submitted jobs were not canceled.")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if code != 0 && failureCode == 0 {
+			failureCode = code
+		}
+	}
+	if failureCode != 0 {
+		os.Exit(failureCode)
+	}
+	return nil
+}
+
+func streamLiveJob(ctx context.Context, c *client.Client, reg *registry.Registry, id string) (int, error) {
+	meta, err := waitForJobStart(ctx, reg, id)
+	if err != nil {
+		return 0, err
+	}
+	if meta.StartedAt != nil && meta.WorkerID != "" {
+		fmt.Printf("Job assigned to %s\n", meta.WorkerID)
+	}
+	fmt.Println("#### BEGIN JOB LOGS ####")
+	err = c.Logs(id, client.LogsOpts{
+		Follow: true, Output: os.Stdout, StderrOutput: os.Stderr,
+		Context: ctx, PollInterval: 250 * time.Millisecond,
+	})
+	if err != nil {
+		return 0, err
+	}
+	fmt.Println("#### END JOB LOGS ####")
+	meta, err = reg.ReadJobMeta(id)
+	if err != nil {
+		return 0, err
+	}
+	message, code := liveSummary(meta, liveColorEnabled())
+	fmt.Println(message)
+	return code, nil
+}
+
+func waitForJobStart(ctx context.Context, reg *registry.Registry, id string) (*protocol.JobMeta, error) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		meta, err := reg.ReadJobMeta(id)
+		if err != nil {
+			return nil, err
+		}
+		if meta != nil && (meta.Status == protocol.StatusRunning || meta.FinishedAt != nil) {
+			return meta, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+func liveSummary(meta *protocol.JobMeta, color bool) (string, int) {
+	code := 0
+	label := "Job finished successfully"
+	shade := "\x1b[32m"
+	if meta.Status != protocol.StatusCompleted {
+		label, shade, code = "Job failed", "\x1b[31m", 1
+		if meta.ExitCode != nil && *meta.ExitCode != 0 {
+			code = *meta.ExitCode
+		}
+	}
+	start, startErr := time.Parse(time.RFC3339, meta.SubmittedAt)
+	if meta.StartedAt != nil {
+		start, startErr = time.Parse(time.RFC3339, *meta.StartedAt)
+	}
+	if meta.FinishedAt != nil && startErr == nil {
+		if end, err := time.Parse(time.RFC3339, *meta.FinishedAt); err == nil {
+			seconds := int(end.Sub(start).Seconds())
+			if seconds < 0 {
+				seconds = 0
+			}
+			if seconds < 60 {
+				label += fmt.Sprintf(" in %ds", seconds)
+			} else {
+				label += fmt.Sprintf(" in %dm%ds", seconds/60, seconds%60)
+			}
+		}
+	}
+	if color {
+		label = shade + label + "\x1b[0m"
+	}
+	return label, code
+}
+
+func liveColorEnabled() bool {
+	if os.Getenv("NO_COLOR") != "" {
+		return false
+	}
+	info, err := os.Stdout.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
+}
+
+// submitTargets binds each --worker to the next script token only. Cobra's
+// parsed positional args no longer contain flag positions, so inspect the
+// original command tokens using the same flag value rules.
+func submitTargets(argv []string, cmd *cobra.Command, count int) ([]string, error) {
+	start := -1
+	for i, arg := range argv {
+		if arg == "submit" {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return nil, fmt.Errorf("submit command not found")
+	}
+	var targets []string
+	pending := ""
+	positional := false
+	for i := start; i < len(argv); i++ {
+		arg := argv[i]
+		if arg == "--" {
+			positional = true
+			continue
+		}
+		if !positional && strings.HasPrefix(arg, "-") {
+			name, value, assigned := strings.Cut(strings.TrimLeft(arg, "-"), "=")
+			var flagName string
+			if len(name) == 1 {
+				if f := cmd.Flags().ShorthandLookup(name); f != nil {
+					flagName = f.Name
+				}
+			} else {
+				flagName = name
+			}
+			flag := cmd.Flags().Lookup(flagName)
+			if flag == nil {
+				flag = cmd.InheritedFlags().Lookup(flagName)
+			}
+			if flag == nil {
+				return nil, fmt.Errorf("unknown flag %s", arg)
+			}
+			if !assigned && flag.NoOptDefVal == "" {
+				i++
+				if i >= len(argv) {
+					return nil, fmt.Errorf("%s needs a value", arg)
+				}
+				value = argv[i]
+			}
+			if flagName == "worker" {
+				pending = value
+			}
+			continue
+		}
+		targets = append(targets, pending)
+		pending = ""
+	}
+	if len(targets) != count {
+		return nil, fmt.Errorf("could not match workers to scripts")
+	}
+	return targets, nil
 }
 
 // --- exec ---
@@ -442,6 +704,22 @@ func execCmd() *cobra.Command {
 
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "stream stdin/stdout/stderr via FIFOs (line-buffered, no PTY)")
+	return cmd
+}
+
+// kp is a short form for running `killall python` on a runner.
+func kpCmd() *cobra.Command {
+	var timeout time.Duration
+	cmd := &cobra.Command{
+		Use:               "kp <node_name>",
+		Short:             "Run killall python on a runner",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkerIDs,
+		RunE: func(_ *cobra.Command, args []string) error {
+			return client.New(resolveBase()).Exec(args[0], "killall python", timeout)
+		},
+	}
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	return cmd
 }
 
@@ -499,7 +777,7 @@ func cancelCmd() *cobra.Command {
 // --- logs ---
 
 func logsCmd() *cobra.Command {
-	var follow, stdoutOnly, stderrOnly bool
+	var follow, stdoutOnly, stderrOnly, all, page bool
 	var tail int
 
 	cmd := &cobra.Command{
@@ -511,21 +789,107 @@ func logsCmd() *cobra.Command {
 				return fmt.Errorf("--stdout and --stderr are mutually exclusive")
 			}
 			c := client.New(resolveBase())
-			return c.Logs(args[0], client.LogsOpts{
+			jobID := args[0]
+			if strings.HasPrefix(jobID, "-") {
+				index, err := strconv.Atoi(jobID[1:])
+				if err != nil || index < 1 {
+					return fmt.Errorf("invalid job index %q", jobID)
+				}
+				jobID, err = c.RecentJobID(index)
+				if err != nil {
+					return err
+				}
+			}
+			if all && cmd.Flags().Changed("tail") {
+				return fmt.Errorf("--all and --tail are mutually exclusive")
+			}
+			if all || (page && !cmd.Flags().Changed("tail")) {
+				tail = 0
+			}
+			opts := client.LogsOpts{
 				Stdout: stdoutOnly || (!stdoutOnly && !stderrOnly),
 				Stderr: stderrOnly || (!stdoutOnly && !stderrOnly),
 				Tail:   tail,
 				Follow: follow,
-			})
+			}
+			if page {
+				return pageLogs(c, jobID, opts)
+			}
+			return c.Logs(jobID, opts)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "follow log output")
 	cmd.Flags().BoolVar(&stdoutOnly, "stdout", false, "only print stdout")
 	cmd.Flags().BoolVar(&stderrOnly, "stderr", false, "only print stderr")
-	cmd.Flags().IntVarP(&tail, "tail", "n", 0, "show only the last N lines (0 = all)")
+	cmd.Flags().IntVarP(&tail, "tail", "n", 100, "show only the last N lines")
+	cmd.Flags().BoolVarP(&all, "all", "a", false, "show full logs")
+	cmd.Flags().BoolVarP(&page, "pager", "p", false, "show full logs in $PAGER (default: less)")
 	cmd.ValidArgsFunction = completeJobIDs
 	return cmd
+}
+
+func pageLogs(c *client.Client, jobID string, opts client.LogsOpts) error {
+	pager := os.Getenv("PAGER")
+	if pager == "" {
+		pager = "less"
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	command := exec.Command("sh", "-c", "exec "+pager)
+	command.Stdin = r
+	command.Stdout = os.Stdout
+	command.Stderr = os.Stderr
+	if err := command.Start(); err != nil {
+		w.Close()
+		return err
+	}
+	opts.Output = w
+	logErr := c.Logs(jobID, opts)
+	w.Close()
+	pagerErr := command.Wait()
+	if logErr != nil {
+		return logErr
+	}
+	return pagerErr
+}
+
+// Cobra treats -1 as a shorthand flag. Move a logs job index behind "--"
+// while leaving all real flags available in their original positions.
+func normalizeLogIndexArgs(argv []string) []string {
+	start := -1
+	for i, arg := range argv {
+		if arg == "logs" {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return argv
+	}
+	for i := start; i < len(argv); i++ {
+		arg := argv[i]
+		if arg == "--" {
+			return argv
+		}
+		if len(arg) < 2 || arg[0] != '-' {
+			continue
+		}
+		if _, err := strconv.Atoi(arg[1:]); err != nil {
+			continue
+		}
+		if i > start && (argv[i-1] == "-n" || argv[i-1] == "--tail" || argv[i-1] == "--base") {
+			continue
+		}
+		out := append([]string(nil), argv[:i]...)
+		out = append(out, argv[i+1:]...)
+		out = append(out, "--", arg)
+		return out
+	}
+	return argv
 }
 
 // --- job ---

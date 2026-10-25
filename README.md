@@ -115,9 +115,10 @@ Commands at a glance:
 - `tokimeki runners`: list known runners and their liveness
 - `tokimeki ps` / `ls`: inspect queued and running jobs
 - `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
-- `tokimeki submit`: submit a script or inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--name`, `--desc`, `--wait`, `--quiet`, `--json`)
+- `tokimeki submit`: submit scripts or an inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--name`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
 - `tokimeki watch <job>`: block until terminal state; exit code = job's exit code
 - `tokimeki exec` (`-i` for interactive): run a one-off command on a target runner
+- `tokimeki kp <node>`: run `killall python` on a target runner
 - `tokimeki kill`: stop the currently running job on a runner
 - `tokimeki cancel`: cancel a queued job
 - `tokimeki logs`: show stdout and stderr for a job (`--follow`, `--tail`, `--stdout`, `--stderr`)

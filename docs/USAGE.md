@@ -87,7 +87,7 @@ JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human
 | Command | One-liner |
 |---|---|
 | `runner` | Start the daemon on this node |
-| `submit` | Queue a job (script or inline command); supports `--wait`, `--quiet`, `--json` |
+| `submit` | Queue scripts or an inline command; supports `--live`, `--wait`, `--quiet`, `--json` |
 | `ps` | List running/queued jobs |
 | `runners` | List runners and heartbeat status |
 | `ls` | `ps` + `runners` together |
@@ -100,6 +100,7 @@ JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human
 | `kill <job_id>` | Send signal to a running job (auto-resolves runner) |
 | `cancel` | Remove a queued job |
 | `exec` | Run an ad-hoc command on a runner |
+| `kp <node>` | Run `killall python` on a runner |
 | `gc` | Garbage-collect old jobs and dead workers |
 | `version` | Build/version info |
 | `completion` | Generate shell completion |
@@ -138,6 +139,17 @@ Script file:
 
 ```bash
 tokimeki submit ./scripts/eval.sh
+tokimeki submit preprocess.sh train.sh
+```
+
+Each script creates a separate job. `-w` targets only the next script; scripts
+without a preceding `-w` go to the general queue. Repeating the same worker is
+valid:
+
+```bash
+tokimeki submit -w node1 preprocess.sh train.sh
+tokimeki submit -w node1 preprocess.sh -w node2 train.sh
+tokimeki submit -w node1 preprocess.sh -w node1 train.sh
 ```
 
 Pin to a specific runner:
@@ -154,7 +166,7 @@ tokimeki submit -r -w w-gpu01 abc12345
 
 All scheduling flags are stackable on submit: `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`. See [scheduling features](#scheduling-features).
 
-#### Output modes (`--quiet`, `--json`, `--wait`)
+#### Output modes (`--quiet`, `--json`, `--wait`, `--live`)
 
 For shell scripts and AI agents:
 
@@ -171,6 +183,20 @@ tok submit --wait -c "python train.py"
 
 `--quiet` and `--json` are mutually exclusive. `--wait` can be combined with either.
 
+Watch a submission live:
+
+```bash
+tokimeki submit -l script.sh
+tokimeki submit -l -w node1 script.sh
+```
+
+`--live` (`-l`) reports queue position and worker acknowledgment, then shows
+the assigned runner and streams the complete job output to stdout and stderr.
+It prints a colored success or failure line on terminals when the job ends. Ctrl-C stops
+watching without canceling the submitted job. With multiple scripts, all jobs
+are submitted first, then their logs are streamed in submission order.
+`--live` cannot be combined with `--quiet`, `--json`, or `--resubmit`.
+
 ### Inspect state
 
 Active jobs:
@@ -181,6 +207,9 @@ tokimeki ps -a             # include finished
 tokimeki ps -w w-gpu01     # filter by worker
 tokimeki ps --json | jq    # machine-readable
 ```
+
+With `-a`, active jobs appear after historical jobs so they remain visible at
+the end of long terminal output.
 
 The `COMMAND` column collapses long absolute paths to the script's basename when it can — `bash /home/.../train_llama.sh` shows as `train_llama.sh`. Recognized launchers: `bash`, `sh`, `zsh`, `python[2/3]`, `node`, `deno`, `bun`, `ruby`, `perl`, `lua`, `Rscript`. Other commands are shown verbatim (truncated to 40 chars).
 
@@ -259,15 +288,22 @@ fi
 Print logs:
 
 ```bash
-tokimeki logs abc12345                  # stdout + stderr
+tokimeki logs abc12345                  # last 100 lines of stdout and stderr
+tokimeki logs -1                        # most recently submitted job
+tokimeki logs -2                        # second most recently submitted job
 tokimeki logs abc12345 --stdout         # stdout only
 tokimeki logs abc12345 --stderr         # stderr only
 tokimeki logs abc12345 -n 50            # last 50 lines
+tokimeki logs abc12345 -a               # full logs
+tokimeki logs abc12345 -p               # full logs in less (or $PAGER)
 tokimeki logs abc12345 -f               # follow until job finishes
 tokimeki logs abc12345 -n 50 -f         # like `tail -f`
+tokimeki logs -1 | grep ERROR           # search both stdout and stderr
 ```
 
-Logs persist after the job finishes (until `gc` removes them).
+The line limit applies to each stream. Both streams are written to stdout so
+pipes such as `grep` see both. Logs persist after the job finishes (until `gc`
+removes them).
 
 ### Cleanup
 
@@ -288,6 +324,7 @@ Run an ad-hoc command (batch — wait, get output back):
 ```bash
 tokimeki exec w-gpu01 "nvidia-smi"
 tokimeki exec w-gpu01 "cat /proc/cpuinfo | head"
+tokimeki kp w-gpu01                 # same as: tokimeki exec w-gpu01 "killall python"
 ```
 
 Run interactively (line-buffered, **no PTY** — works for REPLs/shells, not vim/htop):
