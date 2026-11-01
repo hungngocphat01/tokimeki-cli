@@ -45,7 +45,7 @@ func (m model) render() string {
 	}
 	items := pane(itemTitle, m.itemLines(itemWidth-1, mainHeight-1), itemWidth, mainHeight, m.focus == 1)
 	detail := m.renderDetail(detailWidth, mainHeight)
-	header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render("TOKIMEKI") + lipgloss.NewStyle().Foreground(muted).Render("  "+m.paths.Base)
+	header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render("TOKIMEKI JOB SYSTEM") + lipgloss.NewStyle().Foreground(muted).Render("  "+m.paths.Base)
 	notice := lipgloss.NewStyle().Foreground(bright).Render(fit(m.noticeLine(), m.width))
 	help := lipgloss.NewStyle().Foreground(muted).Render(fit(m.statusLine(), m.width))
 	return fit(header, m.width) + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, features, items, detail) + "\n" + notice + "\n" + help
