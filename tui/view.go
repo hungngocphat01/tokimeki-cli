@@ -106,6 +106,9 @@ func (m model) itemLabel(index int) (string, string) {
 		if status == "idle" {
 			glyph = "◇"
 		}
+		if item.info.TTLHours > 0 {
+			return fmt.Sprintf("%s %s %s · %s", glyph, item.info.WorkerID, item.remainingTTL(time.Now()), item.info.Hostname), status
+		}
 		return fmt.Sprintf("%s %s %s", glyph, item.info.WorkerID, item.info.Hostname), status
 	case activityFeature:
 		item := m.events[index]
@@ -353,6 +356,9 @@ func (m model) renderRunnerDetail(width, height int) string {
 	if selected != nil {
 		title += " · " + selected.info.WorkerID
 		info = []string{" Status: " + selected.displayStatus(), " Host: " + cleanText(selected.info.Hostname), fmt.Sprintf(" Daemon PID: %d", selected.info.PID), " Started: " + selected.info.StartedAt}
+		if selected.info.TTLHours > 0 {
+			info = append(info, " TTL: "+protocol.FormatTTL(time.Duration(selected.info.TTLHours)*time.Hour), " Remaining: "+selected.remainingTTL(time.Now()))
+		}
 		if !selected.heartbeat.IsZero() {
 			info = append(info, fmt.Sprintf(" Heartbeat: %ds ago", max(0, int(time.Since(selected.heartbeat).Seconds()))))
 		}

@@ -38,6 +38,16 @@ func (w worker) displayStatus() string {
 	return w.status
 }
 
+func (w worker) remainingTTL(now time.Time) string {
+	if w.status != "running" {
+		return "-"
+	}
+	if remaining, ok := protocol.RemainingTTL(w.info, now); ok {
+		return protocol.FormatTTL(remaining)
+	}
+	return "-"
+}
+
 type snapshot struct {
 	jobs    []job
 	workers []worker

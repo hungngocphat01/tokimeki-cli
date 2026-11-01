@@ -192,6 +192,19 @@ func TestRunnerMarkersDistinguishIdleBusyAndStopped(t *testing.T) {
 	}
 }
 
+func TestRunnerViewsShowTTLAndRemaining(t *testing.T) {
+	started := time.Now().Add(-3*time.Hour - 30*time.Minute).UTC().Format(time.RFC3339)
+	m := model{feature: runnersFeature, workers: []worker{{
+		info:   protocol.WorkerInfo{WorkerID: "timed", Hostname: "gpu01", StartedAt: started, TTLHours: 50},
+		status: "running",
+	}}}
+	label, _ := m.itemLabel(0)
+	detail := m.renderRunnerDetail(70, 20)
+	if !strings.Contains(label, "1d 23h") || !strings.Contains(detail, "TTL: 2d 2h") || !strings.Contains(detail, "Remaining: 1d 23h") {
+		t.Fatalf("runner label = %q; detail = %q", label, detail)
+	}
+}
+
 func TestActivityShowsSubmittedScriptName(t *testing.T) {
 	m := model{
 		feature: activityFeature,

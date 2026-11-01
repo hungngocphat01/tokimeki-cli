@@ -115,7 +115,8 @@ Every command accepts `--base PATH` to override `TOKIMEKI_HOME`.
 and elapsed time: waiting time for queued jobs, runtime for running jobs.
 History mirrors `ps -a`: all jobs in ascending submission time, with the newest
 at the bottom.
-Runners shows heartbeat and current-job state. Activity shows recent events and
+Runners shows heartbeat, current-job state, and any configured TTL with
+remaining time. Activity shows recent events and
 Enter opens the related job or runner. Job rows use the same status colors as
 `ps`: cyan running, yellow queued, green completed, red failed, magenta
 killed/crashed, and gray stopped.
@@ -137,7 +138,7 @@ on the runner.
 ### Run a runner
 
 ```bash
-tokimeki runner --id w-gpu01 --poll 2s --manner-period 1h
+tokimeki runner --id w-gpu01 --poll 2s --manner-period 1h --ttl 6d23h
 ```
 
 Flags:
@@ -145,6 +146,7 @@ Flags:
 - `--id`: explicit worker ID (default: `<hostname>-<4 hex>`)
 - `--poll`: how often the daemon scans the inbox / queue
 - `--manner-period`: exit cleanly after being jobless this long. `0` disables.
+- `--ttl`: optional expected runner lifetime in whole hours and days, such as `7d`, `1h`, `6d23h`, or `25h`. This is tracking metadata; it does not stop the runner or change the manner period.
 - `--capacity-cpus N`: free CPUs available for capacity-aware scheduling. `0` = unconstrained.
 - `--capacity-mem-mb M`: free memory MB. `0` = unconstrained.
 
@@ -245,6 +247,8 @@ tokimeki runners            # only running
 tokimeki runners -a         # include stopped
 tokimeki runners --json
 ```
+
+The `TTL` and `REMAINING` columns show the expected lifetime and time left since the runner started. Durations are displayed as days and hours (`25h` becomes `1d 1h`). A runner without TTL shows `-`; a stopped runner has no remaining time estimate. JSON includes `ttl_hours` and, for a running runner with TTL, `remaining_secs`.
 
 A specific job:
 

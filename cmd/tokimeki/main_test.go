@@ -86,6 +86,28 @@ func TestLiveSummary(t *testing.T) {
 	}
 }
 
+func TestParseTTL(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  time.Duration
+	}{
+		{"7d", 7 * 24 * time.Hour},
+		{"1h", time.Hour},
+		{"6d23h", 6*24*time.Hour + 23*time.Hour},
+		{"25h", 25 * time.Hour},
+	} {
+		got, err := parseTTL(tc.input)
+		if err != nil || got != tc.want {
+			t.Errorf("parseTTL(%q) = %s, %v; want %s", tc.input, got, err, tc.want)
+		}
+	}
+	for _, input := range []string{"", "0h", "1d30m", "1d-2h", "-1d25h", "1d1d", "word"} {
+		if _, err := parseTTL(input); err == nil {
+			t.Errorf("parseTTL(%q) unexpectedly succeeded", input)
+		}
+	}
+}
+
 func TestSubmitTargets(t *testing.T) {
 	for _, tc := range []struct {
 		args []string

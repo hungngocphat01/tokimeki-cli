@@ -7,10 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -60,18 +62,40 @@ func resolveBase() string {
 	return filepath.Join(home, ".tokimeki")
 }
 
-// parseDuration extends time.ParseDuration with support for "Nd" notation
-// (e.g. "7d" → 7*24h).
+// parseDuration extends time.ParseDuration with a leading day component.
 func parseDuration(s string) (time.Duration, error) {
-	if strings.HasSuffix(s, "d") {
-		trimmed := strings.TrimSuffix(s, "d")
-		days, err := strconv.Atoi(trimmed)
+	if i := strings.IndexByte(s, 'd'); i >= 0 {
+		days, err := strconv.ParseInt(s[:i], 10, 64)
 		if err != nil {
 			return 0, fmt.Errorf("invalid day duration: %q", s)
 		}
-		return time.Duration(days) * 24 * time.Hour, nil
+		if days > int64(time.Duration(1<<63-1)/(24*time.Hour)) || days < int64(time.Duration(-1<<63)/(24*time.Hour)) {
+			return 0, fmt.Errorf("day duration out of range: %q", s)
+		}
+		dayDuration := time.Duration(days) * 24 * time.Hour
+		if i == len(s)-1 {
+			return dayDuration, nil
+		}
+		rest, err := time.ParseDuration(s[i+1:])
+		if err != nil || (rest > 0 && dayDuration > time.Duration(1<<63-1)-rest) || (rest < 0 && dayDuration < time.Duration(-1<<63)-rest) {
+			return 0, fmt.Errorf("invalid duration: %q", s)
+		}
+		return dayDuration + rest, nil
 	}
 	return time.ParseDuration(s)
+}
+
+var ttlPattern = regexp.MustCompile(`^(?:[0-9]+d)?(?:[0-9]+h)?$`)
+
+func parseTTL(s string) (time.Duration, error) {
+	if !ttlPattern.MatchString(s) || s == "" {
+		return 0, fmt.Errorf("invalid TTL %q: specify hours and days, for example 6d23h", s)
+	}
+	ttl, err := parseDuration(s)
+	if err != nil || ttl <= 0 || ttl%time.Hour != 0 {
+		return 0, fmt.Errorf("invalid TTL %q: specify a positive whole number of hours and days", s)
+	}
+	return ttl, nil
 }
 
 // randomHex returns n random hex characters.
@@ -153,6 +177,7 @@ func runnerCmd() *cobra.Command {
 	var workerID string
 	var poll time.Duration
 	var mannerPeriod time.Duration
+	var ttlText string
 	var capCPUs, capMemMB int
 
 	cmd := &cobra.Command{
@@ -160,6 +185,14 @@ func runnerCmd() *cobra.Command {
 		Short: "Start the runner daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			base := resolveBase()
+			var ttl time.Duration
+			if ttlText != "" {
+				var err error
+				ttl, err = parseTTL(ttlText)
+				if err != nil {
+					return fmt.Errorf("--ttl: %w", err)
+				}
+			}
 
 			if workerID == "" {
 				hostname, _ := os.Hostname()
@@ -168,12 +201,17 @@ func runnerCmd() *cobra.Command {
 
 			d := runner.NewDaemon(workerID, base)
 			d.SetMannerPeriod(mannerPeriod)
+			d.SetTTL(ttl)
 			d.SetCapacity(registry.WorkerCapacity{CPUs: capCPUs, MemMB: capMemMB})
 			if err := d.Register(); err != nil {
 				return fmt.Errorf("register: %w", err)
 			}
 
-			fmt.Printf("Runner %s started (poll=%s, manner=%s, base=%s)\n", d.WorkerID(), poll, mannerPeriod, base)
+			ttlLabel := "none"
+			if ttl > 0 {
+				ttlLabel = protocol.FormatTTL(ttl)
+			}
+			log.Printf("Runner %s started (poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), poll, mannerPeriod, ttlLabel, base)
 
 			// Handle graceful shutdown.
 			sigCh := make(chan os.Signal, 1)
@@ -194,6 +232,7 @@ func runnerCmd() *cobra.Command {
 	cmd.Flags().StringVar(&workerID, "id", "", "worker ID (default: <hostname>-<4 hex>)")
 	cmd.Flags().DurationVar(&poll, "poll", 2*time.Second, "poll interval")
 	cmd.Flags().DurationVar(&mannerPeriod, "manner-period", 1*time.Hour, "exit after being jobless for this long (0 to disable)")
+	cmd.Flags().StringVar(&ttlText, "ttl", "", "optional runner lifetime metadata in hours and days (e.g. 6d23h)")
 	cmd.Flags().IntVar(&capCPUs, "capacity-cpus", 0, "available CPU count for capacity-aware scheduling (0 = unconstrained)")
 	cmd.Flags().IntVar(&capMemMB, "capacity-mem-mb", 0, "available memory in MB for capacity-aware scheduling (0 = unconstrained)")
 
