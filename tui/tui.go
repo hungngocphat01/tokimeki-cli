@@ -39,6 +39,7 @@ type model struct {
 	paths         *protocol.Paths
 	jobs, history []job
 	workers       []worker
+	runnerStats   bool
 	events        []eventlog.Event
 	feature       feature
 	selected      [featureCount]int
@@ -120,14 +121,14 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.focus--
 		}
 	case "right", "l", "tab":
-		if m.focus < 2 && (m.focus == 0 || m.itemCount() > 0) {
+		if m.canFocusNext() {
 			m.focus++
 		}
 	case "enter":
 		if m.focus == 1 && m.feature == activityFeature && m.jumpFromEvent() {
 			break
 		}
-		if m.focus < 2 && (m.focus == 0 || m.itemCount() > 0) {
+		if m.canFocusNext() {
 			m.focus++
 		}
 	case "up":
@@ -145,7 +146,7 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "end":
 		m.detailOffset = 0
 	case "v":
-		if m.focus > 0 && m.itemCount() > 0 && m.feature != activityFeature {
+		if m.focus > 0 && m.itemCount() > 0 && m.feature != activityFeature && !(m.feature == runnersFeature && m.runnerStats) {
 			m.focus = 2
 			m.detailSection = 1 - m.detailSection
 			m.detailOffset = 0
@@ -154,10 +155,22 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.selectAction(msg.String())
 	case "s":
 		m.toggleScript()
+	case "t":
+		if m.feature == runnersFeature {
+			m.runnerStats = !m.runnerStats
+			m.focus = min(m.focus, 1)
+			m.detailOffset = 0
+		}
 	case "r":
 		return m, load(m.paths)
 	}
 	return m, nil
+}
+func (m model) canFocusNext() bool {
+	if m.feature == runnersFeature && m.runnerStats && m.focus == 1 {
+		return false
+	}
+	return m.focus < 2 && (m.focus == 0 || m.itemCount() > 0)
 }
 func (m *model) move(delta int) {
 	if m.focus == 0 {
@@ -341,10 +354,6 @@ func (m *model) refreshSelected() {
 		selected.stats = loadStats(m.paths, *selected)
 		selected.logs = loadLogs(m.paths, *selected, 300)
 	}
-	if selected := m.currentWorker(); selected != nil && selected.status == "running" && selected.current != nil {
-		item := job{JobMeta: protocol.JobMeta{JobID: selected.current.JobID, WorkerID: selected.info.WorkerID, Status: protocol.StatusRunning}}
-		selected.stats = loadStats(m.paths, item)
-	}
 }
 func (m *model) selectAction(key string) {
 	selected := m.currentJob()
@@ -433,6 +442,9 @@ func (m model) statusLine() string {
 		return "y confirm  n/Esc cancel"
 	}
 	if m.focus == 0 {
+		if m.feature == runnersFeature {
+			return "t stats/details  ↑/↓ feature  →/Enter open  r refresh  q quit"
+		}
 		return "↑/↓ feature  →/Enter open  r refresh  q quit"
 	}
 	switch m.feature {
@@ -457,7 +469,10 @@ func (m model) statusLine() string {
 		}
 		return "Enter open related job/runner  ←/→ focus  ↑/↓ select/scroll  q quit"
 	case runnersFeature:
-		return "v pane  ←/→ focus  ↑/↓ select/scroll  r refresh  q quit"
+		if m.runnerStats {
+			return "t details  ↑/↓ select  ← features  r refresh  q quit"
+		}
+		return "t stats  v pane  ←/→ focus  ↑/↓ select/scroll  r refresh  q quit"
 	}
 	return "q quit"
 }

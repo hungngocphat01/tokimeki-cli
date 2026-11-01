@@ -36,6 +36,7 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	writeJSON(paths.JobMeta("queued01"), protocol.JobMeta{JobID: "queued01", Status: protocol.StatusQueued, SubmittedAt: "2026-01-01T00:01:00Z"})
 	writeJSON(paths.JobMeta("finished"), protocol.JobMeta{JobID: "finished", Status: protocol.StatusCompleted, SubmittedAt: "2026-01-01T00:02:00Z"})
 	writeJSON(paths.WorkerInfo("node1"), protocol.WorkerInfo{WorkerID: "node1", Hostname: "gpu01"})
+	writeJSON(paths.WorkerCurrent("node1"), protocol.JobInfo{JobID: "running1", PID: 222})
 	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -47,6 +48,9 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	state, err := loadSnapshot(paths)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(state.workers) != 1 || state.workers[0].stats == nil || state.workers[0].stats.CPUPercent != 143 {
+		t.Fatalf("runner stats snapshot = %+v", state.workers)
 	}
 	jobs := orderJobs(state.jobs, false)
 	if len(jobs) != 2 || jobs[0].JobID != "running1" || jobs[1].JobID != "queued01" {
@@ -174,17 +178,17 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 	}
 }
 
-func TestRunnerMarkersDistinguishIdleAndBusy(t *testing.T) {
+func TestRunnerDetailListShowsOnlyNames(t *testing.T) {
 	m := model{feature: runnersFeature, workers: []worker{
-		{info: protocol.WorkerInfo{WorkerID: "idle"}, status: "running"},
-		{info: protocol.WorkerInfo{WorkerID: "busy"}, status: "running", current: &protocol.JobInfo{JobID: "job1"}},
+		{info: protocol.WorkerInfo{WorkerID: "idle", Hostname: "gpu01"}, status: "running"},
+		{info: protocol.WorkerInfo{WorkerID: "busy", Hostname: "gpu02"}, status: "running", current: &protocol.JobInfo{JobID: "job1"}},
 	}}
 	for i, want := range []struct{ label, status string }{
-		{"◇ idle", "idle"},
-		{"▶ busy", "running"},
+		{"idle", "idle"},
+		{"busy", "running"},
 	} {
 		label, status := m.itemLabel(i)
-		if !strings.HasPrefix(label, want.label) || status != want.status {
+		if label != want.label || status != want.status {
 			t.Errorf("runner %d = (%q, %q), want (%q, %q)", i, label, status, want.label, want.status)
 		}
 	}
@@ -201,8 +205,40 @@ func TestRunnerViewsShowTTLAndRemaining(t *testing.T) {
 	}}}
 	label, _ := m.itemLabel(0)
 	detail := m.renderRunnerDetail(70, 20)
-	if !strings.Contains(label, "1d 23h") || !strings.Contains(detail, "TTL: 2d 2h") || !strings.Contains(detail, "Remaining: 1d 23h") {
+	if label != "timed" || !strings.Contains(detail, "TTL: 2d 2h") || !strings.Contains(detail, "Remaining: 1d 23h") {
 		t.Fatalf("runner label = %q; detail = %q", label, detail)
+	}
+}
+
+func TestRunnerStatsViewAndModeToggle(t *testing.T) {
+	m := model{
+		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 30,
+		feature: runnersFeature, focus: 1,
+		workers: []worker{
+			{info: protocol.WorkerInfo{WorkerID: "gpu-a", Hostname: "node-a"}, status: "running", current: &protocol.JobInfo{JobID: "job1", PID: 123}, stats: &stats{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUUtil: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAt: time.Now().UTC().Format(time.RFC3339)}},
+			{info: protocol.WorkerInfo{WorkerID: "gpu-b", Hostname: "node-b"}, status: "running"},
+		},
+	}
+	next, _ := m.Update(tea.KeyPressMsg{Code: 't'})
+	m = next.(model)
+	if !m.runnerStats || !strings.Contains(m.statusLine(), "t details") {
+		t.Fatalf("stats mode not enabled: %+v", m)
+	}
+	next, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	m = next.(model)
+	if m.focus != 1 {
+		t.Fatalf("stats view should have no detail pane, focus=%d", m.focus)
+	}
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"Runners · stats", "gpu-a", "node-a", "job1", "CPU 143%", "RSS 2.0 GiB", "GPU 67%", "GPU_MEM 4.0 GiB/8.0 GiB", "PROCS 3", "gpu-b", "idle · no active job"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("stats view missing %q: %s", want, view)
+		}
+	}
+	next, _ = m.Update(tea.KeyPressMsg{Code: 't'})
+	m = next.(model)
+	if m.runnerStats || !strings.Contains(ansi.Strip(m.View().Content), "Runner · gpu-a") {
+		t.Fatal("detail mode not restored")
 	}
 }
 
@@ -292,6 +328,18 @@ func TestPaneFitsTerminal(t *testing.T) {
 			for i, line := range lines {
 				if lipgloss.Width(line) > size[0] {
 					t.Fatalf("%v %s line %d is %d cells wide", size, featureNames[feature], i, lipgloss.Width(line))
+				}
+			}
+			if feature == runnersFeature {
+				m.runnerStats = true
+				statsLines := strings.Split(m.View().Content, "\n")
+				if len(statsLines) > size[1] {
+					t.Fatalf("%v runner stats view has %d lines", size, len(statsLines))
+				}
+				for i, line := range statsLines {
+					if lipgloss.Width(line) > size[0] {
+						t.Fatalf("%v runner stats line %d is too wide", size, i)
+					}
 				}
 			}
 		}

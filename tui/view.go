@@ -39,16 +39,26 @@ func (m model) render() string {
 	}
 	detailWidth := m.width - featureWidth - itemWidth
 	features := pane("Features", m.featureLines(featureWidth-1), featureWidth, mainHeight, m.focus == 0)
-	itemTitle := fmt.Sprintf("%s (%d)", featureNames[m.feature], m.itemCount())
-	if m.feature == historyFeature {
-		itemTitle += " · submitted ↑"
+	var body string
+	if m.feature == runnersFeature && m.runnerStats {
+		statsWidth := m.width - featureWidth
+		statsPane := pane(fmt.Sprintf("Runners · stats (%d)", len(m.workers)), m.runnerStatsLines(statsWidth-1, mainHeight-1), statsWidth, mainHeight, m.focus == 1)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, features, statsPane)
+	} else {
+		itemTitle := fmt.Sprintf("%s (%d)", featureNames[m.feature], m.itemCount())
+		if m.feature == historyFeature {
+			itemTitle += " · submitted ↑"
+		} else if m.feature == runnersFeature {
+			itemTitle += " · details"
+		}
+		items := pane(itemTitle, m.itemLines(itemWidth-1, mainHeight-1), itemWidth, mainHeight, m.focus == 1)
+		detail := m.renderDetail(detailWidth, mainHeight)
+		body = lipgloss.JoinHorizontal(lipgloss.Top, features, items, detail)
 	}
-	items := pane(itemTitle, m.itemLines(itemWidth-1, mainHeight-1), itemWidth, mainHeight, m.focus == 1)
-	detail := m.renderDetail(detailWidth, mainHeight)
 	header := lipgloss.NewStyle().Foreground(accent).Bold(true).Render("TOKIMEKI JOB SYSTEM") + lipgloss.NewStyle().Foreground(muted).Render("  "+m.paths.Base)
 	notice := lipgloss.NewStyle().Foreground(bright).Render(fit(m.noticeLine(), m.width))
 	help := lipgloss.NewStyle().Foreground(muted).Render(fit(m.statusLine(), m.width))
-	return fit(header, m.width) + "\n" + lipgloss.JoinHorizontal(lipgloss.Top, features, items, detail) + "\n" + notice + "\n" + help
+	return fit(header, m.width) + "\n" + body + "\n" + notice + "\n" + help
 }
 func (m model) featureLines(width int) []string {
 	lines := []string{""}
@@ -101,15 +111,7 @@ func (m model) itemLabel(index int) (string, string) {
 		return fmt.Sprintf("%s %s %s", client.StatusDisplay(item.effectiveStatus, true), item.JobID, name), item.effectiveStatus
 	case runnersFeature:
 		item := m.workers[index]
-		status := item.displayStatus()
-		glyph := client.StatusDisplay(item.status, true)
-		if status == "idle" {
-			glyph = "◇"
-		}
-		if item.info.TTLHours > 0 {
-			return fmt.Sprintf("%s %s %s · %s", glyph, item.info.WorkerID, item.remainingTTL(time.Now()), item.info.Hostname), status
-		}
-		return fmt.Sprintf("%s %s %s", glyph, item.info.WorkerID, item.info.Hostname), status
+		return item.info.WorkerID, item.displayStatus()
 	case activityFeature:
 		item := m.events[index]
 		at, err := time.Parse(time.RFC3339Nano, item.TS)
@@ -135,6 +137,60 @@ func (m model) itemLabel(index int) (string, string) {
 		return label, eventStatus(item)
 	}
 	return "", ""
+}
+
+func (m model) runnerStatsLines(width, height int) []string {
+	if len(m.workers) == 0 {
+		return []string{"", "  No active runners"}
+	}
+	visible := max(1, height/4)
+	start := max(0, m.selected[runnersFeature]-visible+1)
+	lines := make([]string, 0, height)
+	for i := start; i < len(m.workers) && len(lines)+4 <= height; i++ {
+		item := m.workers[i]
+		marker := " "
+		if i == m.selected[runnersFeature] {
+			marker = "›"
+		}
+		jobID, pid := "-", "-"
+		if item.current != nil {
+			jobID = item.current.JobID
+			pid = fmt.Sprintf("%d", item.current.PID)
+		}
+		label := fmt.Sprintf(" %s %s  HOST %s  JOB %s  PID %s", marker, item.info.WorkerID, item.info.Hostname, jobID, pid)
+		if i == m.selected[runnersFeature] {
+			label = lipgloss.NewStyle().Foreground(accent).Bold(true).Render(fit(label, width))
+		}
+		lines = append(lines, label)
+		if item.current == nil {
+			lines = append(lines, "    idle · no active job", "")
+		} else if item.stats == nil {
+			lines = append(lines, "    Waiting for a fresh stats sample", "")
+		} else {
+			s := item.stats
+			gpu := fmt.Sprintf("%d%%", s.GPUUtil)
+			gpuMem := formatBytes(s.GPUMemBytes)
+			if strings.Contains(s.Note, "nvidia-smi") || strings.Contains(s.Note, "non-linux") {
+				gpu, gpuMem = "n/a", "n/a"
+			} else if s.GPUMemTotalBytes > 0 {
+				gpuMem += "/" + formatBytes(s.GPUMemTotalBytes)
+			}
+			age := "?"
+			if sampled, err := time.Parse(time.RFC3339, s.SampledAt); err == nil {
+				age = fmt.Sprintf("%ds", max(0, int(time.Since(sampled).Seconds())))
+			}
+			lines = append(lines,
+				fmt.Sprintf("    CPU %.0f%%   RSS %s   GPU %s", s.CPUPercent, formatBytes(s.RSSBytes), gpu),
+				fmt.Sprintf("    GPU_MEM %s   PROCS %d   AGE %s", gpuMem, s.NumProcs, age),
+			)
+		}
+		note := ""
+		if item.stats != nil && item.stats.Note != "" {
+			note = "    " + cleanText(item.stats.Note)
+		}
+		lines = append(lines, note)
+	}
+	return lines
 }
 func statusColor(status string) color.Color {
 	switch status {

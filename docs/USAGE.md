@@ -115,8 +115,11 @@ Every command accepts `--base PATH` to override `TOKIMEKI_HOME`.
 and elapsed time: waiting time for queued jobs, runtime for running jobs.
 History mirrors `ps -a`: all jobs in ascending submission time, with the newest
 at the bottom.
-Runners lists live daemons and shows heartbeat, current-job state, and any
-configured TTL with remaining time. Activity shows recent events and
+Runners lists live daemons. Its default details view shows runner names in the
+list and heartbeat, current-job state, TTL, and resources in the detail pane.
+Press `t` to switch to a full-width stats view with each runner's job, CPU,
+RSS, GPU, GPU memory, process count, and sample age; press `t` again to return.
+Activity shows recent events and
 Enter opens the related job or runner. Job rows use the same status colors as
 `ps`: cyan running, yellow queued, green completed, red failed, magenta
 killed/crashed, and gray stopped.

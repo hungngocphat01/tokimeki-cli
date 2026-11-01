@@ -171,6 +171,7 @@ func loadWorkers(paths *protocol.Paths) ([]worker, error) {
 			var current protocol.JobInfo
 			if json.Unmarshal(data, &current) == nil && current.JobID != "" {
 				item.current = &current
+				item.stats = loadStats(paths, job{JobMeta: protocol.JobMeta{JobID: current.JobID, WorkerID: item.info.WorkerID, Status: protocol.StatusRunning}})
 			}
 		}
 		workers = append(workers, item)

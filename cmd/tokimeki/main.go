@@ -1084,6 +1084,7 @@ the GPU columns show "n/a". CPU% can exceed 100% on multi-threaded jobs
 			if asJSON {
 				return c.StatsJSON()
 			}
+			fmt.Println("TOKIMEKI JOB SYSTEM")
 			return c.Stats()
 		},
 	}
