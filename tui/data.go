@@ -156,7 +156,6 @@ func loadWorkers(paths *protocol.Paths) ([]worker, error) {
 		if json.Unmarshal(data, &item.info) != nil || item.info.WorkerID != entry.Name() {
 			continue
 		}
-		item.status = "stopped"
 		if data, err := os.ReadFile(paths.WorkerHeartbeat(entry.Name())); err == nil {
 			if nsec, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64); err == nil {
 				item.heartbeat = time.Unix(0, nsec)
@@ -164,6 +163,9 @@ func loadWorkers(paths *protocol.Paths) ([]worker, error) {
 					item.status = "running"
 				}
 			}
+		}
+		if item.status != "running" {
+			continue
 		}
 		if data, err := os.ReadFile(paths.WorkerCurrent(entry.Name())); err == nil {
 			var current protocol.JobInfo
@@ -174,9 +176,6 @@ func loadWorkers(paths *protocol.Paths) ([]worker, error) {
 		workers = append(workers, item)
 	}
 	sort.Slice(workers, func(i, j int) bool {
-		if workers[i].status != workers[j].status {
-			return workers[i].status == "running"
-		}
 		return workers[i].info.WorkerID < workers[j].info.WorkerID
 	})
 	return workers, nil

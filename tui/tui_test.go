@@ -82,6 +82,9 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(stale.workers) != 0 {
+		t.Fatalf("TUI runners included stopped runner: %+v", stale.workers)
+	}
 	if got := orderJobs(stale.jobs, false); len(got) != 1 || got[0].JobID != "queued01" {
 		t.Fatalf("ps view with stopped runner = %+v", got)
 	}
@@ -171,16 +174,14 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 	}
 }
 
-func TestRunnerMarkersDistinguishIdleBusyAndStopped(t *testing.T) {
+func TestRunnerMarkersDistinguishIdleAndBusy(t *testing.T) {
 	m := model{feature: runnersFeature, workers: []worker{
 		{info: protocol.WorkerInfo{WorkerID: "idle"}, status: "running"},
 		{info: protocol.WorkerInfo{WorkerID: "busy"}, status: "running", current: &protocol.JobInfo{JobID: "job1"}},
-		{info: protocol.WorkerInfo{WorkerID: "stopped"}, status: "stopped"},
 	}}
 	for i, want := range []struct{ label, status string }{
 		{"◇ idle", "idle"},
 		{"▶ busy", "running"},
-		{"○ stopped", "stopped"},
 	} {
 		label, status := m.itemLabel(i)
 		if !strings.HasPrefix(label, want.label) || status != want.status {
