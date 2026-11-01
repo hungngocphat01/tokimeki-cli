@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ngocphat/tokimeki-cli/tui"
 	"github.com/ngocphat/tokimeki/client"
 	"github.com/ngocphat/tokimeki/protocol"
 	"github.com/ngocphat/tokimeki/registry"
@@ -119,6 +120,7 @@ func main() {
 		add(eventsCmd(), "inspect"),
 		add(watchCmd(), "inspect"),
 		add(statsCmd(), "inspect"),
+		add(tuiCmd(), "inspect"),
 
 		add(execCmd(), "control"),
 		add(kpCmd(), "control"),
@@ -131,6 +133,17 @@ func main() {
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+func tuiCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "tui",
+		Short: "Open the interactive jobs dashboard",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return tui.Run(resolveBase())
+		},
 	}
 }
 

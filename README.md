@@ -68,6 +68,7 @@ tokimeki submit solve.sh
 tokimeki runners        # list all runners
 tokimeki ps             # running + queued jobs (queued jobs are unassigned)
 tokimeki ps -a          # include finished jobs
+tokimeki tui            # interactive live jobs, logs, and resources
 tokimeki logs <job_id>  # view output
 tokimeki job <job_id>   # job details
 ```

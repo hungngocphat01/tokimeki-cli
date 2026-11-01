@@ -93,6 +93,7 @@ JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human
 | `ls` | `ps` + `runners` together |
 | `top` | One-shot dashboard combining runners + jobs + recent jobs (use `watch -n 3 tok top` for auto-refresh) |
 | `stats` | Snapshot of CPU/RAM/GPU usage across all running jobs |
+| `tui` | Interactive active jobs, live logs, and resource usage |
 | `job <id>` | Show full job metadata + script |
 | `logs <id>` | Print stdout/stderr (with `--follow`, `--tail`) |
 | `watch <id>` | Block until terminal state; exit code = job's exit code |
@@ -106,6 +107,28 @@ JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human
 | `completion` | Generate shell completion |
 
 Every command accepts `--base PATH` to override `TOKIMEKI_HOME`.
+
+### Interactive dashboard (`tok tui`)
+
+`tokimeki tui` opens three columns: features, items, and details. Jobs mirrors
+`ps` and shows running and queued jobs. Its detail pane shows submission time
+and elapsed time: waiting time for queued jobs, runtime for running jobs.
+History mirrors `ps -a`: all jobs in ascending submission time, with the newest
+at the bottom.
+Runners shows heartbeat and current-job state. Activity shows recent events and
+Enter opens the related job or runner. Job rows use the same status colors as
+`ps`: cyan running, yellow queued, green completed, red failed, magenta
+killed/crashed, and gray stopped.
+
+The bottom help bar changes with the selected view. Use Up/Down to select a
+feature or item, Left/Right to move focus, `v` to switch between upper and
+lower detail panes, Page Up/Page Down to scroll faster, and End to follow logs.
+On a running job, `k` sends SIGTERM and `p` runs `killall python` on its runner.
+On a queued job, `c` cancels it. These actions ask for `y` confirmation. Press
+`s` to toggle a syntax-highlighted view of the original Bash script, `r` to
+refresh, or `q` to quit. The view refreshes every second. Resource values come
+from the runner's `stats.json` sample; GPU usage needs Linux and NVIDIA tooling
+on the runner.
 
 ---
 
