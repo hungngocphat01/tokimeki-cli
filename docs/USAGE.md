@@ -100,6 +100,7 @@ JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human
 | `events` | Stream the shared event log |
 | `kill <job_id>` | Send signal to a running job (auto-resolves runner) |
 | `cancel` | Remove a queued job |
+| `shell <node>` | Open a full interactive terminal on a runner (uses TCP) |
 | `exec` | Run an ad-hoc command on a runner |
 | `kp <node>` | Run `killall python` on a runner |
 | `gc` | Garbage-collect old jobs and dead workers |
@@ -119,6 +120,8 @@ Runners lists live daemons. Its default details view shows runner names in the
 list and heartbeat, current-job state, TTL, and resources in the detail pane.
 Press `t` to switch to a full-width stats view with each runner's job, CPU,
 RSS, GPU, GPU memory, process count, and sample age; press `t` again to return.
+Press `s` to open a shell on the selected runner; exit the shell to return to
+the dashboard.
 Activity shows recent events and
 Enter opens the related job or runner. Job rows use the same status colors as
 `ps`: cyan running, yellow queued, green completed, red failed, magenta
@@ -365,7 +368,21 @@ tokimeki exec w-gpu01 -i python
 tokimeki exec w-gpu01 -i psql -d mydb
 ```
 
-Use `Ctrl-D` to close stdin and exit. For full-screen TUIs, use your cluster's interactive job mechanism (`qsub -I`, `srun --pty`) instead.
+Use `Ctrl-D` to close stdin and exit. For full-screen programs, use `tokimeki shell`.
+
+Open a full terminal (PTY) with color, vim/htop, Ctrl-C, and window resizing, without SSH:
+
+```bash
+tokimeki shell w-gpu01
+```
+
+The command exits with the shell's exit code. Unlike every other command, it uses the network: the runner's node connects back to your machine over TLS, so it must be able to reach you. Run it as the same user that started the runner. If it can't find you, or a firewall only allows certain ports:
+
+```bash
+tokimeki shell w-gpu01 --advertise login01 --listen :50000
+```
+
+An open shell keeps the runner from exiting for being jobless, and closes if the runner stops. If the remote machine doesn't recognize your terminal type (common with newer terminals), run `TERM=xterm-256color tokimeki shell w-gpu01`. Runners must be restarted on a version that includes this command.
 
 ### Resource usage across all runners (`tok stats`)
 
@@ -525,7 +542,7 @@ tokimeki completion fish > ~/.config/fish/completions/tokimeki.fish
 
 Then `<tab>` completes:
 
-- worker IDs after `exec`, `submit -r -w`, `kill --worker`
+- worker IDs after `shell`, `exec`, `submit -r -w`, `kill --worker`
 - job IDs after `cancel`, `kill`, `logs`, `job`
 
 ---
@@ -555,6 +572,7 @@ workers/<id>/
   current.json         # currently running job, if any
   inbox/  outbox/      # request/response FIFOs (files)
   exec/<sid>/          # interactive exec session FIFOs
+  shell/               # private rendezvous files for open shell sessions
 jobs/<id>/
   meta.json            # job metadata
   script.sh

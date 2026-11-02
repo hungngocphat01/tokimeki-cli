@@ -2,8 +2,13 @@
 package tui
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
 	"sort"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -30,6 +35,7 @@ type pendingAction struct {
 	kind action
 	job  job
 }
+type shellFinishedMsg struct{ notice string }
 type snapshotMsg struct {
 	state snapshot
 	err   error
@@ -87,6 +93,9 @@ func (m model) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 	case actionResult:
 		m.busy = false
 		m.notice = actionNotice(msg)
+		return m, load(m.paths)
+	case shellFinishedMsg:
+		m.notice = msg.notice
 		return m, load(m.paths)
 	case tea.KeyPressMsg:
 		if m.confirm != nil {
@@ -154,6 +163,9 @@ func (m model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "k", "p", "c":
 		m.selectAction(msg.String())
 	case "s":
+		if m.feature == runnersFeature {
+			return m, m.openShell()
+		}
 		m.toggleScript()
 	case "t":
 		if m.feature == runnersFeature {
@@ -375,6 +387,41 @@ func (m *model) selectAction(key string) {
 		}
 	}
 }
+
+// openShell suspends the dashboard and runs `tokimeki shell` on the selected
+// runner. It is a separate process because an in-process session would leave a
+// goroutine blocked on stdin that steals the next keypress from the dashboard.
+func (m model) openShell() tea.Cmd {
+	selected := m.currentWorker()
+	if m.focus == 0 || selected == nil {
+		return nil
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		return func() tea.Msg { return shellFinishedMsg{fmt.Sprintf("shell: %v", err)} }
+	}
+	workerID := selected.info.WorkerID
+	cmd := exec.Command(executable, "shell", workerID, "--base", m.paths.Base)
+	// The remote terminal only writes to stdout, so stderr carries just our own
+	// messages. Keep a copy to show failures after the dashboard redraws.
+	var stderr bytes.Buffer
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
+	return tea.ExecProcess(cmd, func(error) tea.Msg {
+		return shellFinishedMsg{shellNotice(workerID, stderr.String())}
+	})
+}
+
+// shellNotice summarizes a finished session. A non-zero exit alone is not a
+// failure, since it may just be the status of the last command in the shell.
+func shellNotice(workerID, stderr string) string {
+	for _, line := range strings.Split(stderr, "\n") {
+		if message, ok := strings.CutPrefix(line, "Error: "); ok {
+			return fmt.Sprintf("shell on %s: %s", workerID, message)
+		}
+	}
+	return "Closed shell on " + workerID
+}
+
 func (m *model) toggleScript() {
 	selected := m.currentJob()
 	if m.focus == 0 || selected == nil {
@@ -470,9 +517,9 @@ func (m model) statusLine() string {
 		return "Enter open related job/runner  ←/→ focus  ↑/↓ select/scroll  q quit"
 	case runnersFeature:
 		if m.runnerStats {
-			return "t details  ↑/↓ select  ← features  r refresh  q quit"
+			return "s shell  t details  ↑/↓ select  ← features  r refresh  q quit"
 		}
-		return "t stats  v pane  ←/→ focus  ↑/↓ select/scroll  r refresh  q quit"
+		return "s shell  t stats  v pane  ←/→ focus  ↑/↓ select/scroll  r refresh  q quit"
 	}
 	return "q quit"
 }

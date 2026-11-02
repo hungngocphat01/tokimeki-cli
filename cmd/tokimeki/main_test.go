@@ -10,7 +10,24 @@ import (
 	"time"
 
 	"github.com/ngocphat/tokimeki/protocol"
+	"github.com/ngocphat/tokimeki/shell/session"
 )
+
+// The runner builds this command line in the engine; the CLI must accept it.
+func TestShellDaemonAcceptsRunnerArgs(t *testing.T) {
+	cmd := shellDaemonCmd()
+	args := session.DaemonArgs("/base", "w1", "abc")
+	if cmd.Use != args[0] {
+		t.Fatalf("command = %q, runner starts %q", cmd.Use, args[0])
+	}
+	cmd.Flags().String(session.FlagBase, "", "") // a persistent root flag in main
+	if err := cmd.ParseFlags(args[1:]); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.ValidateRequiredFlags(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestKPDispatchesKillallPythonToNamedRunner(t *testing.T) {
 	oldBase := baseDir

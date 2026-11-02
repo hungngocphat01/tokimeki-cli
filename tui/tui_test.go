@@ -464,3 +464,37 @@ func testRunningAction(t *testing.T, kind action, typeName, command string, sign
 		t.Fatal("no runner request captured")
 	}
 }
+
+func TestShellKeyOnlyOpensFromSelectedRunner(t *testing.T) {
+	m := model{paths: protocol.NewPaths("/tmp/tokimeki"), feature: runnersFeature, workers: []worker{
+		{info: protocol.WorkerInfo{WorkerID: "gpu01"}, status: "running"},
+	}}
+	if m.openShell() != nil {
+		t.Fatal("shell opened with the features pane focused")
+	}
+	m.focus = 1
+	if m.openShell() == nil {
+		t.Fatal("shell did not open for the selected runner")
+	}
+	if !strings.Contains(m.statusLine(), "s shell") {
+		t.Fatalf("status line = %q", m.statusLine())
+	}
+	m.workers = nil
+	if m.openShell() != nil {
+		t.Fatal("shell opened with no runner selected")
+	}
+	m.feature, m.focus = jobsFeature, 1
+	if strings.Contains(m.statusLine(), "s shell") {
+		t.Fatalf("jobs status line offers shell: %q", m.statusLine())
+	}
+}
+
+func TestShellNoticeReportsOnlyConnectionFailures(t *testing.T) {
+	if got := shellNotice("gpu01", "Connecting to runner gpu01...\n"); got != "Closed shell on gpu01" {
+		t.Errorf("notice = %q", got)
+	}
+	got := shellNotice("gpu01", "Connecting to runner gpu01...\nError: timed out\n")
+	if got != "shell on gpu01: timed out" {
+		t.Errorf("notice = %q", got)
+	}
+}

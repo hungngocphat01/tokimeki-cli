@@ -23,6 +23,8 @@ import (
 	"github.com/ngocphat/tokimeki/protocol"
 	"github.com/ngocphat/tokimeki/registry"
 	"github.com/ngocphat/tokimeki/runner"
+	"github.com/ngocphat/tokimeki/shell"
+	"github.com/ngocphat/tokimeki/shell/session"
 	"github.com/spf13/cobra"
 )
 
@@ -117,7 +119,7 @@ func main() {
 		Short: "TOKIMEKI Runners — filesystem-based job submission system",
 	}
 
-	rootCmd.PersistentFlags().StringVar(&baseDir, "base", "", "base directory for state (default: ~/.tokimeki)")
+	rootCmd.PersistentFlags().StringVar(&baseDir, session.FlagBase, "", "base directory for state (default: ~/.tokimeki)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "run", Title: "Run:"},
@@ -146,6 +148,7 @@ func main() {
 		add(statsCmd(), "inspect"),
 		add(tuiCmd(), "inspect"),
 
+		add(shellCmd(), "control"),
 		add(execCmd(), "control"),
 		add(kpCmd(), "control"),
 		add(killCmd(), "control"),
@@ -153,6 +156,7 @@ func main() {
 
 		add(gcCmd(), "maintain"),
 		add(versionCmd(), "maintain"),
+		shellDaemonCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
@@ -756,6 +760,74 @@ func execCmd() *cobra.Command {
 
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "stream stdin/stdout/stderr via FIFOs (line-buffered, no PTY)")
+	return cmd
+}
+
+// --- shell ---
+
+func shellCmd() *cobra.Command {
+	var opts client.ShellOptions
+
+	cmd := &cobra.Command{
+		Use:   "shell <worker_id>",
+		Short: "Open an interactive terminal on a runner (uses TCP, no SSH needed)",
+		Long: `Open a full interactive terminal (PTY) on a runner, with color, full-screen
+programs, job control, and window resizing.
+
+Unlike other commands, the session uses the network: the runner's node connects
+back to this machine over TLS. The shared filesystem is only used to set it up.`,
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkerIDs,
+		SilenceUsage:      true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			code, err := client.New(resolveBase()).Shell(args[0], opts)
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				os.Exit(code)
+			}
+			return nil
+		},
+	}
+
+	cmd.Flags().DurationVar(&opts.Timeout, "timeout", 60*time.Second, "how long to wait for the runner to connect back")
+	cmd.Flags().StringVar(&opts.Listen, "listen", "", "local address to listen on, e.g. :50000 (default: all interfaces, random port)")
+	cmd.Flags().StringVar(&opts.Advertise, "advertise", "", "hostname or IP the runner should connect to (default: auto-detect)")
+	return cmd
+}
+
+// shellDaemonCmd is the child process a runner spawns for each shell session.
+func shellDaemonCmd() *cobra.Command {
+	var workerID, sessionID string
+
+	cmd := &cobra.Command{
+		Use:           session.DaemonCommand,
+		Short:         "Serve one shell session (started by the runner)",
+		Hidden:        true,
+		Args:          cobra.NoArgs,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Keep the descriptor out of the user's shell.
+			syscall.CloseOnExec(session.LifelineFD)
+			err := shell.RunDaemon(shell.DaemonOptions{
+				Paths:     protocol.NewPaths(resolveBase()),
+				WorkerID:  workerID,
+				SessionID: sessionID,
+				Lifeline:  os.NewFile(session.LifelineFD, "lifeline"),
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "shell-daemon %s: %v\n", sessionID, err)
+			}
+			return err
+		},
+	}
+
+	cmd.Flags().StringVar(&workerID, session.FlagWorker, "", "worker ID")
+	cmd.Flags().StringVar(&sessionID, session.FlagSession, "", "session ID")
+	_ = cmd.MarkFlagRequired(session.FlagWorker)
+	_ = cmd.MarkFlagRequired(session.FlagSession)
 	return cmd
 }
 
