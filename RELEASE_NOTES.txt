@@ -1,0 +1,130 @@
+Subject: Tokimeki CLI update - Linux amd64 build
+
+Hello,
+
+A new Tokimeki CLI binary for Linux amd64 is available. This build contains
+the following command-line updates:
+
+* Submit several scripts in one command:
+    tokimeki submit script1.sh script2.sh
+
+  Each script becomes a separate job. A -w option targets the next script
+  only; any script without its own -w goes to the general queue. For example:
+    tokimeki submit -w node1 script1.sh script2.sh
+    tokimeki submit -w node1 script1.sh -w node2 script2.sh
+
+* Watch a submission as it runs:
+    tokimeki submit -l script.sh
+
+  Live mode reports the queue position and worker acknowledgment, names the
+  runner when the job starts, and streams stdout and stderr. At completion it
+  reports success or failure and the runtime. Pressing Ctrl-C stops the live
+  view without canceling the job.
+
+* Inspect logs more easily:
+    tokimeki logs -1       most recently submitted job
+    tokimeki logs -2       second most recently submitted job
+    tokimeki logs JOB_ID   last 100 lines of each output stream
+    tokimeki logs -a JOB_ID   complete logs
+    tokimeki logs -p JOB_ID   complete logs in less (or $PAGER)
+
+  Both streams are included when piping logs to grep. The -a and -p flags
+  also work with a job index, for example: tokimeki logs -1 -a.
+
+* The "ps -a" display puts active jobs after job history so running jobs stay
+  visible at the end of long terminal output.
+
+* Run "killall python" on a named runner with:
+    tokimeki kp node1
+
+  This is equivalent to: tokimeki exec node1 "killall python". It affects
+  Python processes on that runner, so use the intended node name.
+
+Binary: tokimeki-linux-amd64
+CLI commit: 3cd1ddcf9cb6
+Engine commit: d6e85fc7de05
+SHA-256: ae95f5915eedd3ded1c615cc4316478276ecc4ff3c0995b06cd12e357a259974
+
+The binary is a statically linked Linux x86-64 executable. After uploading,
+make it executable with: chmod +x tokimeki-linux-amd64
+
+---
+2026-11-02
+
+Subject: Tokimeki CLI update - interactive dashboard and runner tracking
+
+
+NEW FEATURES:
+* Open the interactive dashboard with:
+    tokimeki tui
+
+  Browse active jobs, all job history, live runners, and recent activity.
+  Select a job to inspect its status, submission and elapsed times, recent
+  stdout/stderr, resource use, and original Bash script. Select an activity
+  event and press Enter to jump to its related job or runner. Job status colors
+  match the CLI tables. The dashboard refreshes every second and needs a
+  terminal at least 82 columns by 16 rows.
+
+  Use the arrow keys to move between features, items, and details; v switches
+  detail panes, s toggles the script, and End follows the latest logs. Press r
+  to refresh or q to quit. On a running job, k sends SIGTERM and p runs
+  killall python on its runner. On a queued job, c cancels it. These actions
+  ask for confirmation before running.
+
+* In the TUI's Runners view, press t to switch between runner details and a
+  wide resource view. The resource view shows each active runner's job, CPU,
+  RSS memory, GPU use and memory, process count, and sample age. Stopped
+  runners are hidden from this view. GPU readings require Linux and NVIDIA
+  tooling on the runner.
+
+* Track the time left in a runner's external allocation with --ttl. For
+  example, if a cluster grants a 50-hour allocation, record that duration
+  when starting the runner:
+    tokimeki runner --id node1 --ttl 50h
+
+  The flag accepts positive whole days and hours, such as 7d, 1h, 6d23h,
+  or 50h. Check the estimate with tokimeki runners or open tokimeki tui
+  and select the runner. Illustrative output after about 3 hours 30 minutes:
+
+    $ tokimeki runners
+    WORKER  HOSTNAME  PID   STARTED              TTL    REMAINING  STATUS
+    node1   gpu01     1234  2026-11-02 09:00:00  2d 2h  1d 23h    ▶ running
+
+    TUI runner details:
+     TTL: 2d 2h
+     Remaining: 1d 23h
+
+  The remaining time is estimated from the runner's start time. Without
+  --ttl, the CLI shows - in both columns. With --json, the runner record
+  includes ttl_hours and, while running, remaining_secs. Runner startup also
+  logs its effective TTL. TTL is tracking metadata: reaching 0h does not stop
+  the runner or change its idle-exit manner period. This is convenient to track
+  the lease time from the underlying HAKUSAN scheduler.
+
+* Job history now follows submission order. Both tokimeki ps -a and
+  tokimeki ps -a --json list all jobs oldest first, regardless of status;
+  the TUI History view does the same. This replaces the previous ps -a
+  behavior that placed active jobs after finished jobs. The default
+  tokimeki ps still groups active jobs by status and priority.
+
+INTERNAL OPTIMIZATIONS:
+* Job listing and output lookup no longer need to acquire the global queue
+  lock for every job's metadata. Lock contention could leave tokimeki ps
+  waiting or missing jobs, and could prevent indexed commands such as
+  tokimeki logs -1 and logs -2 from finding the intended job output. Reading
+  atomically replaced metadata directly makes these listings faster and
+  removes that lock race from the read path.
+
+* The global registry lock is no longer stolen automatically when it appears
+  stale. The old check-and-rename recovery could race with a new lock owner
+  and allow concurrent updates. If a process dies while holding the lock,
+  inspect the host and PID recorded in shared/.global-lock, confirm the owner
+  is gone, then remove that file manually. Lock timeout errors now identify
+  the lock path. Runners also log queue-check failures and job-completion
+  recording failures so these problems are visible.
+
+* The TUI header and human-readable tokimeki stats output now use the
+  TOKIMEKI JOB SYSTEM title. Stats JSON output is unchanged.
+
+CLI commit: 2d85860
+Engine commit: 04b04965
