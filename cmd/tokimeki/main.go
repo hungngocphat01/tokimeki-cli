@@ -24,6 +24,7 @@ import (
 	"github.com/hungngocphat01/tokimeki/runner"
 	"github.com/hungngocphat01/tokimeki/shell"
 	"github.com/hungngocphat01/tokimeki/shell/session"
+	"github.com/ngocphat/tokimeki-cli/display"
 	"github.com/ngocphat/tokimeki-cli/tui"
 	"github.com/spf13/cobra"
 )
@@ -1197,7 +1198,7 @@ func gcCmd() *cobra.Command {
 				opts.OlderThan = dur
 			}
 			if maxSize != "" {
-				n, err := client.ParseSize(maxSize)
+				n, err := display.ParseSize(maxSize)
 				if err != nil {
 					return fmt.Errorf("invalid --max-size: %w", err)
 				}
@@ -1230,7 +1231,7 @@ func printGCReport(rep client.GCReport) {
 		case client.GCExpiredJob:
 			fmt.Printf("%s job: %s (%s)\n", verb, item.ID, item.Status)
 		case client.GCSizeCapJob:
-			fmt.Printf("%s job (size cap): %s (%s, %s)\n", verb, item.ID, item.Status, formatSize(item.SizeBytes))
+			fmt.Printf("%s job (size cap): %s (%s, %s)\n", verb, item.ID, item.Status, display.Size(item.SizeBytes))
 		}
 	}
 	for _, w := range rep.Warnings {
@@ -1244,25 +1245,5 @@ func printGCReport(rep client.GCReport) {
 		fmt.Printf("GC dry-run: %d items would be removed\n", len(rep.Removed))
 	} else {
 		fmt.Printf("GC complete: %d items removed\n", len(rep.Removed))
-	}
-}
-
-// formatSize renders a byte count as 1.5K / 2.0M / 3.1G. Moves to the display
-// package in a later step.
-func formatSize(n int64) string {
-	const (
-		KB = 1 << 10
-		MB = 1 << 20
-		GB = 1 << 30
-	)
-	switch {
-	case n >= GB:
-		return fmt.Sprintf("%.1fG", float64(n)/GB)
-	case n >= MB:
-		return fmt.Sprintf("%.1fM", float64(n)/MB)
-	case n >= KB:
-		return fmt.Sprintf("%.1fK", float64(n)/KB)
-	default:
-		return fmt.Sprintf("%dB", n)
 	}
 }
