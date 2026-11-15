@@ -530,6 +530,8 @@ With `--json`, a failure prints only this envelope on stdout and exits 1:
 {"error": {"code": "not_found", "message": "job nope not found"}}
 ```
 
+If `submit` with several scripts fails partway, the envelope also has `"submitted": [SubmitResult...]` listing the jobs already queued.
+
 Codes: `not_found`, `invalid_state` (e.g. cancel a running job), `invalid_argument` (bad flags or arguments), `timeout`, `runner_rejected`, `runner_not_running`, `internal`.
 
 `--json` cannot be combined with `submit --live`, `submit --quiet`, or `exec -i`.

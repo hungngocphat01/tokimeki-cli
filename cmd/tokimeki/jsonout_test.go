@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -15,7 +16,11 @@ func runJSON(t *testing.T, base string, args ...string) (string, int) {
 	prevOut := os.Stdout
 	os.Stdout = outW
 	outC := drain(outR)
-	code := execute(append([]string{"--base", base}, args...))
+	argv := append([]string{"--base", base}, args...)
+	prevArgs := os.Args
+	os.Args = append([]string{"tok"}, argv...)
+	defer func() { os.Args = prevArgs }()
+	code := execute(argv)
 	os.Stdout = prevOut
 	outW.Close()
 	return <-outC, code
@@ -144,4 +149,25 @@ func splitLines(s string) []string {
 		}
 	}
 	return out
+}
+
+func TestJSONSubmitBatchFailureReportsQueuedJobs(t *testing.T) {
+	base := copyFixture(t)
+	script := filepath.Join(t.TempDir(), "a.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/bash\necho a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runJSON(t, base, "submit", script, filepath.Join(t.TempDir(), "missing.sh"), "--json")
+	var env struct {
+		Error     struct{ Code string } `json:"error"`
+		Submitted []struct {
+			JobID string `json:"job_id"`
+		} `json:"submitted"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if code != 1 || env.Error.Code != "not_found" || len(env.Submitted) != 1 || env.Submitted[0].JobID == "" {
+		t.Fatalf("exit=%d envelope=%+v\n%s", code, env, out)
+	}
 }

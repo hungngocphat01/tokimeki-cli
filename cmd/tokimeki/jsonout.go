@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -61,12 +62,28 @@ func writeNDJSON(v any) error {
 
 // writeJSONError prints the --json failure envelope:
 // {"error":{"code":"<client.Code>","message":"..."}}.
+// A failed multi-script submit adds "submitted": the jobs queued before the
+// failure, so a caller does not resubmit them.
 func writeJSONError(err error) {
-	_ = writeJSON(map[string]any{"error": map[string]string{
+	env := map[string]any{"error": map[string]string{
 		"code":    string(client.CodeOf(err)),
 		"message": err.Error(),
-	}})
+	}}
+	var batch *batchError
+	if errors.As(err, &batch) && len(batch.submitted) > 0 {
+		env["submitted"] = batch.submitted
+	}
+	_ = writeJSON(env)
 }
+
+// batchError is a submit failure after some jobs were already queued.
+type batchError struct {
+	err       error
+	submitted []client.SubmitResult
+}
+
+func (e *batchError) Error() string { return e.err.Error() }
+func (e *batchError) Unwrap() error { return e.err }
 
 // argError reports invalid command-line usage (code invalid_argument).
 func argError(format string, args ...any) error {

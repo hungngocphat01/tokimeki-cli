@@ -434,7 +434,7 @@ Use either:
 				for i, path := range args {
 					spec.TargetWorkerID = targets[i]
 					if err := submit(spec, path); err != nil {
-						return fmt.Errorf("submit %s: %w", path, err)
+						return &batchError{err: fmt.Errorf("submit %s: %w", path, err), submitted: submitted}
 					}
 				}
 			}
