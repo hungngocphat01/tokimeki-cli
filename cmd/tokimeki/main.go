@@ -886,6 +886,7 @@ func logsCmd() *cobra.Command {
 				Stderr: stderrOnly || (!stdoutOnly && !stderrOnly),
 				Tail:   tail,
 				Follow: follow,
+				Output: os.Stdout,
 			}
 			if page {
 				return pageLogs(c, jobID, opts)
