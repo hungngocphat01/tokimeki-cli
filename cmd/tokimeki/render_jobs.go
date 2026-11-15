@@ -104,40 +104,6 @@ func dash(s string) string {
 	return s
 }
 
-// psJobJSON is the pre-engine-schema `ps --json` shape.
-// TODO(task 9): replace with client.Job.
-type psJobJSON struct {
-	JobID       string `json:"job_id"`
-	Runner      string `json:"runner,omitempty"`
-	PID         int    `json:"pid,omitempty"`
-	Command     string `json:"command"`
-	Name        string `json:"name,omitempty"`
-	Status      string `json:"status"`
-	SubmittedAt string `json:"submitted_at,omitempty"`
-	StartedAt   string `json:"started_at,omitempty"`
-	FinishedAt  string `json:"finished_at,omitempty"`
-	ElapsedSecs int64  `json:"elapsed_secs,omitempty"`
-}
-
-func psJSON(jobs []client.Job) []psJobJSON {
-	out := make([]psJobJSON, 0, len(jobs))
-	for _, job := range jobs {
-		out = append(out, psJobJSON{
-			JobID:       job.ID,
-			Runner:      job.Worker,
-			PID:         job.PID,
-			Command:     job.Command,
-			Name:        job.Name,
-			Status:      job.EffectiveStatus,
-			SubmittedAt: display.RFC3339(job.SubmittedAtNs),
-			StartedAt:   display.RFC3339(job.StartedAtNs),
-			FinishedAt:  display.RFC3339(job.FinishedAtNs),
-			ElapsedSecs: int64(job.ElapsedSecs),
-		})
-	}
-	return out
-}
-
 // topData is everything one top frame shows.
 type topData struct {
 	base    string

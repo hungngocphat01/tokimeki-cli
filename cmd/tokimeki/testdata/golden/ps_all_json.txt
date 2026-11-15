@@ -1,66 +1,100 @@
 [
   {
     "job_id": "a0000008",
-    "runner": "w-gpu",
+    "worker_id": "w-gpu",
     "command": "echo garbage-start",
     "status": "completed",
-    "submitted_at": "2026-01-05T09:00:00Z",
-    "finished_at": "2026-01-05T09:30:00Z"
+    "effective_status": "completed",
+    "exit_code": 0,
+    "submitted_at_ns": 1767603600000000000,
+    "finished_at_ns": 1767605400000000000,
+    "elapsed_secs": 0
   },
   {
     "job_id": "a0000001",
-    "runner": "w-gpu",
+    "worker_id": "w-gpu",
     "command": "bash /home/u/exp/run.sh",
     "name": "train",
+    "user": "u",
     "status": "completed",
-    "submitted_at": "2026-01-05T10:00:00Z",
-    "started_at": "2026-01-05T10:00:05Z",
-    "finished_at": "2026-01-05T11:23:45Z",
+    "effective_status": "completed",
+    "exit_code": 0,
+    "attempts": 1,
+    "submitted_at_ns": 1767607200000000000,
+    "started_at_ns": 1767607205000000000,
+    "finished_at_ns": 1767612225000000000,
     "elapsed_secs": 5020
   },
   {
     "job_id": "a0000002",
-    "runner": "w-gpu",
+    "worker_id": "w-gpu",
     "command": "python3 -u /home/u/exp/eval.py --epochs 5",
     "status": "failed",
-    "submitted_at": "2026-01-05T10:10:00Z",
-    "started_at": "2026-01-05T11:24:00Z",
-    "finished_at": "2026-01-05T11:30:00Z",
+    "effective_status": "failed",
+    "exit_code": 3,
+    "priority": 5,
+    "retries": 1,
+    "attempts": 2,
+    "backoff_secs": 30,
+    "orig_job": "a0000001",
+    "submitted_at_ns": 1767607800000000000,
+    "started_at_ns": 1767612240000000000,
+    "finished_at_ns": 1767612600000000000,
     "elapsed_secs": 360
   },
   {
     "job_id": "a0000003",
-    "runner": "w-old",
+    "worker_id": "w-old",
     "command": "sleep 1000",
     "status": "killed",
-    "submitted_at": "2026-01-05T10:20:00Z",
-    "started_at": "2026-01-05T10:21:00Z",
-    "finished_at": "2026-01-05T12:00:00Z",
+    "effective_status": "killed",
+    "exit_code": 143,
+    "depends_on": [
+      "a0000001"
+    ],
+    "submitted_at_ns": 1767608400000000000,
+    "started_at_ns": 1767608460000000000,
+    "finished_at_ns": 1767614400000000000,
     "elapsed_secs": 5940
   },
   {
     "job_id": "a0000004",
-    "runner": "w-old",
+    "worker_id": "w-old",
     "command": "echo crash",
     "status": "crashed",
-    "submitted_at": "2026-01-05T10:30:00Z",
-    "started_at": "2026-01-05T10:31:00Z",
-    "finished_at": "2026-01-05T10:40:00Z",
+    "effective_status": "crashed",
+    "exit_code": null,
+    "submitted_at_ns": 1767609000000000000,
+    "started_at_ns": 1767609060000000000,
+    "finished_at_ns": 1767609600000000000,
     "elapsed_secs": 540
   },
   {
     "job_id": "a0000006",
     "command": "echo hi",
     "status": "queued",
-    "submitted_at": "2026-01-05T12:00:00Z"
+    "effective_status": "queued",
+    "exit_code": null,
+    "attempts": 1,
+    "queue_position": 1,
+    "submitted_at_ns": 1767614400000000000,
+    "elapsed_secs": 0
   },
   {
     "job_id": "a0000007",
-    "runner": "w-gpu",
+    "worker_id": "w-gpu",
     "command": "bash /x/y/z.sh",
     "name": "TrainB",
     "status": "queued",
-    "submitted_at": "2026-01-05T12:05:00Z"
+    "effective_status": "queued",
+    "exit_code": null,
+    "priority": 2,
+    "cpus": 4,
+    "mem_mb": 8000,
+    "attempts": 1,
+    "queue_position": 2,
+    "submitted_at_ns": 1767614700000000000,
+    "elapsed_secs": 0
   }
 ]
 

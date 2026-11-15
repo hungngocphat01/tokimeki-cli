@@ -1,18 +1,21 @@
 [
   {
     "worker_id": "w-gpu",
+    "has_info": true,
     "hostname": "gpu01",
     "pid": 4242,
-    "started_at": "2026-01-04T00:00:00Z",
-    "ttl_hours": 167,
-    "status": "stopped"
+    "version": "v0.1.0",
+    "started_at_ns": 1767484800000000000,
+    "alive": false,
+    "ttl_secs": 601200
   },
   {
     "worker_id": "w-old",
+    "has_info": true,
     "hostname": "old01",
     "pid": 77,
-    "started_at": "2026-01-01T08:00:00Z",
-    "status": "stopped"
+    "started_at_ns": 1767254400000000000,
+    "alive": false
   }
 ]
 

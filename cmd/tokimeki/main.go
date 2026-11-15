@@ -110,9 +110,7 @@ func randomHex(n int) string {
 
 func main() {
 	os.Args = normalizeLogIndexArgs(os.Args)
-	if err := newRootCmd().Execute(); err != nil {
-		os.Exit(1)
-	}
+	os.Exit(execute(os.Args[1:]))
 }
 
 func tuiCmd() *cobra.Command {
@@ -208,7 +206,7 @@ func runnersCmd() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return writeJSON(runnersJSON(runners))
+				return writeJSON(runners)
 			}
 			return printRunners(os.Stdout, runners)
 		},
@@ -233,7 +231,7 @@ func psCmd() *cobra.Command {
 			c := client.New(resolveBase())
 			if len(args) == 1 {
 				if filterWorker != "" {
-					return fmt.Errorf("use either positional worker_id or -w/--worker, not both")
+					return argError("use either positional worker_id or -w/--worker, not both")
 				}
 				filterWorker = args[0]
 			}
@@ -242,7 +240,7 @@ func psCmd() *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return writeJSON(psJSON(jobs))
+				return writeJSON(jobs)
 			}
 			return printPS(os.Stdout, jobs)
 		},
@@ -307,22 +305,29 @@ Use either:
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			if live && (quiet || asJSON) {
-				return fmt.Errorf("--live cannot be combined with --quiet or --json")
+				return argError("--live cannot be combined with --quiet or --json")
 			}
 			if live && resubmit {
-				return fmt.Errorf("--live cannot be combined with --resubmit")
+				return argError("--live cannot be combined with --resubmit")
 			}
 
 			if resubmit {
 				if len(args) != 1 {
-					return fmt.Errorf("resubmit requires: submit -r [-w <worker_id>] <job_id>")
+					return argError("resubmit requires: submit -r [-w <worker_id>] <job_id>")
 				}
 				if inlineCommand != "" {
-					return fmt.Errorf("--command cannot be used with --resubmit")
+					return argError("--command cannot be used with --resubmit")
 				}
 				res, err := c.Resubmit(args[0], workerID, client.SubmitOpts{Timeout: timeout})
 				if err != nil {
 					return err
+				}
+				if asJSON {
+					return writeJSON(res)
+				}
+				if quiet {
+					fmt.Println(res.JobID)
+					return nil
 				}
 				fmt.Printf("Job %s submitted", res.JobID)
 				if res.Position > 0 {
@@ -343,7 +348,7 @@ Use either:
 			}
 			if backoff != "" {
 				if _, err := time.ParseDuration(backoff); err != nil {
-					return fmt.Errorf("invalid --backoff: %w", err)
+					return argError("invalid --backoff: %v", err)
 				}
 			}
 			user := os.Getenv("USER")
@@ -362,17 +367,17 @@ Use either:
 			}
 
 			if quiet && asJSON {
-				return fmt.Errorf("--quiet and --json are mutually exclusive")
+				return argError("--quiet and --json are mutually exclusive")
 			}
 			if live {
 				var paths []string
 				if inlineCommand == "" {
 					if len(args) == 0 {
-						return fmt.Errorf("script submit requires: submit <script_path> [script_path...]")
+						return argError("script submit requires: submit <script_path> [script_path...]")
 					}
 					paths = args
 				} else if len(args) != 0 {
-					return fmt.Errorf("inline submit requires: submit -c <command>")
+					return argError("inline submit requires: submit -c <command>")
 				}
 				targets := []string{workerID}
 				if inlineCommand == "" {
@@ -398,21 +403,29 @@ Use either:
 				}
 				return runLiveJobs(c, ids)
 			}
-			silent := quiet || asJSON
-			var jobs []string
-			if inlineCommand != "" {
-				if len(args) != 0 {
-					return fmt.Errorf("inline submit requires: submit -c <command>")
-				}
-				spec.Command = inlineCommand
-				id, err := submitOne(c, spec, "", silent, asJSON, timeout)
+			var submitted []client.SubmitResult
+			submit := func(spec protocol.JobSpec, path string) error {
+				res, err := submitOne(c, spec, path, quiet || asJSON, timeout)
 				if err != nil {
 					return err
 				}
-				jobs = append(jobs, id)
+				if quiet {
+					fmt.Println(res.JobID)
+				}
+				submitted = append(submitted, res)
+				return nil
+			}
+			if inlineCommand != "" {
+				if len(args) != 0 {
+					return argError("inline submit requires: submit -c <command>")
+				}
+				spec.Command = inlineCommand
+				if err := submit(spec, ""); err != nil {
+					return err
+				}
 			} else {
 				if len(args) == 0 {
-					return fmt.Errorf("script submit requires: submit <script_path> [script_path...]")
+					return argError("script submit requires: submit <script_path> [script_path...]")
 				}
 				targets, err := submitTargets(os.Args, cmd, len(args))
 				if err != nil {
@@ -420,32 +433,51 @@ Use either:
 				}
 				for i, path := range args {
 					spec.TargetWorkerID = targets[i]
-					id, err := submitOne(c, spec, path, silent, asJSON, timeout)
-					if err != nil {
+					if err := submit(spec, path); err != nil {
 						return fmt.Errorf("submit %s: %w", path, err)
 					}
-					jobs = append(jobs, id)
 				}
 			}
 			if !wait {
-				return nil
+				if !asJSON {
+					return nil
+				}
+				if len(submitted) == 1 {
+					return writeJSON(submitted[0])
+				}
+				return writeJSON(submitted)
 			}
 			failureCode := 0
-			for _, jobID := range jobs {
-				res, err := c.Watch(jobID, client.WatchOpts{OnStatus: printWatchStatus(jobID)})
+			var results []client.WatchResult
+			for _, res := range submitted {
+				jobID := res.JobID
+				opts := client.WatchOpts{}
+				if !asJSON {
+					opts.OnStatus = printWatchStatus(jobID)
+				}
+				res, err := c.Watch(jobID, opts)
 				if err != nil {
 					return err
 				}
-				if res.ExitCode != nil {
-					fmt.Printf("[wait %s] %s exit=%d\n", jobID, res.Status, *res.ExitCode)
-					if *res.ExitCode != 0 && failureCode == 0 {
-						failureCode = *res.ExitCode
+				results = append(results, res)
+				if !asJSON {
+					if res.ExitCode != nil {
+						fmt.Printf("[wait %s] %s exit=%d\n", jobID, res.Status, *res.ExitCode)
+					} else {
+						fmt.Printf("[wait %s] %s\n", jobID, res.Status)
 					}
-				} else {
-					fmt.Printf("[wait %s] %s\n", jobID, res.Status)
-					if res.Status != protocol.StatusCompleted && failureCode == 0 {
+				}
+				if failureCode == 0 {
+					if res.ExitCode != nil && *res.ExitCode != 0 {
+						failureCode = *res.ExitCode
+					} else if res.ExitCode == nil && res.Status != protocol.StatusCompleted {
 						failureCode = 1
 					}
+				}
+			}
+			if asJSON {
+				if err := writeJSON(map[string]any{"submitted": submitted, "results": results}); err != nil {
+					return err
 				}
 			}
 			if failureCode != 0 {
@@ -470,29 +502,18 @@ Use either:
 	cmd.Flags().BoolVar(&wait, "wait", false, "block until job reaches a terminal state; exit with the job's exit code")
 	cmd.Flags().BoolVarP(&live, "live", "l", false, "show assignment and stream job output until completion; Ctrl-C leaves the job running")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "print only the job ID on success")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print a JSON object {job_id, position, worker, worker_acked}")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the submit result as JSON (see docs/USAGE.md)")
 	return cmd
 }
 
-func submitOne(c *client.Client, spec protocol.JobSpec, path string, silent, asJSON bool, timeout time.Duration) (string, error) {
+// submitOne submits one job. Unless silent, it prints each submit stage as
+// it happens.
+func submitOne(c *client.Client, spec protocol.JobSpec, path string, silent bool, timeout time.Duration) (client.SubmitResult, error) {
 	opts := client.SubmitOpts{Timeout: timeout}
 	if !silent {
 		opts.OnProgress = printSubmitProgress
 	}
-	res, err := submitSpec(c, spec, path, opts)
-	if err != nil || !silent {
-		return res.JobID, err
-	}
-	if asJSON {
-		b, err := json.Marshal(res)
-		if err != nil {
-			return "", err
-		}
-		fmt.Println(string(b))
-	} else {
-		fmt.Println(res.JobID)
-	}
-	return res.JobID, nil
+	return submitSpec(c, spec, path, opts)
 }
 
 // submitSpec submits an inline command (path empty) or a script file.
@@ -697,7 +718,7 @@ func submitTargets(argv []string, cmd *cobra.Command, count int) ([]string, erro
 
 func execCmd() *cobra.Command {
 	var timeout time.Duration
-	var interactive bool
+	var interactive, asJSON bool
 
 	cmd := &cobra.Command{
 		Use:   "exec <worker_id> <command...>",
@@ -714,7 +735,18 @@ func execCmd() *cobra.Command {
 			workerID := args[0]
 			command := strings.Join(args[1:], " ")
 			if interactive {
+				if asJSON {
+					return argError("--interactive and --json are mutually exclusive")
+				}
 				return c.ExecInteractive(workerID, command, timeout)
+			}
+			if asJSON {
+				// The caller reads exit_code; only a failed request is an error.
+				res, err := c.Exec(workerID, command, timeout)
+				if err != nil {
+					return err
+				}
+				return writeJSON(res)
 			}
 			return runExec(c, workerID, command, timeout)
 		},
@@ -722,6 +754,7 @@ func execCmd() *cobra.Command {
 
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().BoolVarP(&interactive, "interactive", "i", false, "stream stdin/stdout/stderr via FIFOs (line-buffered, no PTY)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {stdout, stderr, exit_code} as JSON")
 	return cmd
 }
 
@@ -831,6 +864,7 @@ func killCmd() *cobra.Command {
 	var sig int
 	var timeout time.Duration
 	var worker string
+	var asJSON bool
 
 	cmd := &cobra.Command{
 		Use:   "kill <job_id>",
@@ -852,13 +886,16 @@ only when meta is missing or corrupt).`,
 			if worker != "" {
 				err = c.Kill(worker, jobID, sig, timeout)
 			} else {
-				_, err = c.KillJob(jobID, sig, timeout)
+				worker, err = c.KillJob(jobID, sig, timeout)
 			}
 			if err != nil {
 				return err
 			}
 			if sig == 0 {
 				sig = 15
+			}
+			if asJSON {
+				return writeJSON(map[string]any{"job_id": jobID, "worker_id": worker, "signal": sig})
 			}
 			fmt.Printf("Kill signal %d sent to job %s\n", sig, jobID)
 			return nil
@@ -868,13 +905,15 @@ only when meta is missing or corrupt).`,
 	cmd.Flags().IntVar(&sig, "signal", 15, "signal number to send")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().StringVar(&worker, "worker", "", "explicit worker ID (override meta lookup)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, worker_id, signal} as JSON")
 	return cmd
 }
 
 // --- cancel ---
 
 func cancelCmd() *cobra.Command {
-	return &cobra.Command{
+	var asJSON bool
+	cmd := &cobra.Command{
 		Use:               "cancel <job_id>",
 		Short:             "Cancel a queued job",
 		Args:              cobra.ExactArgs(1),
@@ -883,10 +922,15 @@ func cancelCmd() *cobra.Command {
 			if err := client.New(resolveBase()).Cancel(args[0]); err != nil {
 				return err
 			}
+			if asJSON {
+				return writeJSON(map[string]string{"job_id": args[0]})
+			}
 			fmt.Printf("Canceled queued job %s\n", args[0])
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id} as JSON")
+	return cmd
 }
 
 // --- logs ---
@@ -901,14 +945,14 @@ func logsCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if stdoutOnly && stderrOnly {
-				return fmt.Errorf("--stdout and --stderr are mutually exclusive")
+				return argError("--stdout and --stderr are mutually exclusive")
 			}
 			c := client.New(resolveBase())
 			jobID := args[0]
 			if strings.HasPrefix(jobID, "-") {
 				index, err := strconv.Atoi(jobID[1:])
 				if err != nil || index < 1 {
-					return fmt.Errorf("invalid job index %q", jobID)
+					return argError("invalid job index %q", jobID)
 				}
 				jobID, err = c.RecentJobID(index)
 				if err != nil {
@@ -916,7 +960,7 @@ func logsCmd() *cobra.Command {
 				}
 			}
 			if all && cmd.Flags().Changed("tail") {
-				return fmt.Errorf("--all and --tail are mutually exclusive")
+				return argError("--all and --tail are mutually exclusive")
 			}
 			if all || (page && !cmd.Flags().Changed("tail")) {
 				tail = 0
@@ -1018,6 +1062,13 @@ func jobCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
+			if asJSON {
+				job, err := c.GetJob(args[0])
+				if err != nil {
+					return err
+				}
+				return writeJSON(job)
+			}
 			meta, err := c.JobRecord(args[0])
 			if err != nil {
 				return err
@@ -1027,9 +1078,6 @@ func jobCmd() *cobra.Command {
 				return fmt.Errorf("marshal meta: %w", err)
 			}
 			fmt.Println(string(data))
-			if asJSON {
-				return nil
-			}
 			if script, err := c.JobScript(args[0]); err == nil {
 				fmt.Println("\n--- script.sh ---")
 				fmt.Print(script)
@@ -1040,7 +1088,7 @@ func jobCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON only (omit script body)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "emit the job as JSON (no script body)")
 	cmd.ValidArgsFunction = completeJobIDs
 	return cmd
 }
@@ -1090,7 +1138,7 @@ func eventsCmd() *cobra.Command {
 				} else if t, err := time.Parse(time.RFC3339, since); err == nil {
 					opts.Since = t
 				} else {
-					return fmt.Errorf("invalid --since: %q (expected duration like 5m or RFC3339 timestamp)", since)
+					return argError("invalid --since: %q (expected duration like 5m or RFC3339 timestamp)", since)
 				}
 			}
 			c := client.New(resolveBase())
@@ -1120,7 +1168,7 @@ func eventsCmd() *cobra.Command {
 
 func watchCmd() *cobra.Command {
 	var interval time.Duration
-	var quiet bool
+	var quiet, asJSON bool
 	var timeout time.Duration
 
 	cmd := &cobra.Command{
@@ -1131,14 +1179,18 @@ func watchCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			opts := client.WatchOpts{Interval: interval, Timeout: timeout}
-			if !quiet {
+			if !quiet && !asJSON {
 				opts.OnStatus = printWatchStatus(args[0])
 			}
 			res, err := c.Watch(args[0], opts)
 			if err != nil {
 				return err
 			}
-			if !quiet {
+			if asJSON {
+				if err := writeJSON(res); err != nil {
+					return err
+				}
+			} else if !quiet {
 				if res.ExitCode != nil {
 					fmt.Printf("[watch %s] %s exit=%d\n", args[0], res.Status, *res.ExitCode)
 				} else {
@@ -1157,6 +1209,7 @@ func watchCmd() *cobra.Command {
 	cmd.Flags().DurationVarP(&interval, "interval", "i", 500*time.Millisecond, "poll interval")
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status (or nothing if exit code is 0)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "max wait before giving up (0 = forever)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the final {status, exit_code} as JSON")
 	return cmd
 }
 
@@ -1185,7 +1238,7 @@ the GPU columns show "n/a". CPU% can exceed 100% on multi-threaded jobs
 				return err
 			}
 			if asJSON {
-				return writeJSON(statsJSONRows(samples))
+				return writeJSON(samples)
 			}
 			fmt.Println("TOKIMEKI JOB SYSTEM")
 			return printStats(os.Stdout, samples)
@@ -1199,7 +1252,7 @@ the GPU columns show "n/a". CPU% can exceed 100% on multi-threaded jobs
 
 func gcCmd() *cobra.Command {
 	var olderThan, maxSize string
-	var dryRun bool
+	var dryRun, asJSON bool
 
 	cmd := &cobra.Command{
 		Use:   "gc",
@@ -1209,20 +1262,23 @@ func gcCmd() *cobra.Command {
 			if olderThan != "" {
 				dur, err := parseDuration(olderThan)
 				if err != nil {
-					return fmt.Errorf("invalid --older-than: %w", err)
+					return argError("invalid --older-than: %v", err)
 				}
 				opts.OlderThan = dur
 			}
 			if maxSize != "" {
 				n, err := display.ParseSize(maxSize)
 				if err != nil {
-					return fmt.Errorf("invalid --max-size: %w", err)
+					return argError("invalid --max-size: %v", err)
 				}
 				opts.MaxSize = n
 			}
 			rep, err := client.New(resolveBase()).GC(opts)
 			if err != nil {
 				return err
+			}
+			if asJSON {
+				return writeJSON(rep)
 			}
 			printGCReport(rep)
 			return nil
@@ -1232,6 +1288,7 @@ func gcCmd() *cobra.Command {
 	cmd.Flags().StringVar(&olderThan, "older-than", "7d", "remove jobs older than this duration (empty = disable)")
 	cmd.Flags().StringVar(&maxSize, "max-size", "", "cap total size of terminal job dirs (e.g. 10G, 500M)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without removing")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the GC report as JSON")
 	return cmd
 }
 
@@ -1268,11 +1325,7 @@ func printGCReport(rep client.GCReport) {
 // asJSON, as one NDJSON line.
 func printEvent(ev client.Event, asJSON bool) {
 	if asJSON {
-		data, _ := json.Marshal(eventJSON{
-			TS: display.RFC3339Nano(ev.TSNs), Kind: ev.Kind, JobID: ev.JobID, WorkerID: ev.WorkerID,
-			ExitCode: ev.ExitCode, Status: ev.Status, Fields: ev.Fields,
-		})
-		fmt.Println(string(data))
+		_ = writeNDJSON(ev)
 		return
 	}
 	tail := ""
@@ -1289,16 +1342,4 @@ func printEvent(ev client.Event, asJSON bool) {
 		tail += " status=" + ev.Status
 	}
 	fmt.Printf("%s %s%s\n", display.RFC3339Nano(ev.TSNs), ev.Kind, tail)
-}
-
-// eventJSON is the pre-engine-schema `events --json` shape.
-// TODO(task 9): replace with client.Event.
-type eventJSON struct {
-	TS       string            `json:"ts"`
-	Kind     string            `json:"kind"`
-	JobID    string            `json:"job_id,omitempty"`
-	WorkerID string            `json:"worker_id,omitempty"`
-	ExitCode *int              `json:"exit_code,omitempty"`
-	Status   string            `json:"status,omitempty"`
-	Fields   map[string]string `json:"fields,omitempty"`
 }

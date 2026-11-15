@@ -2,14 +2,16 @@
   "job_id": "a0000001",
   "worker_id": "w-gpu",
   "command": "bash /home/u/exp/run.sh",
-  "status": "completed",
-  "submitted_at": "2026-01-05T10:00:00Z",
-  "started_at": "2026-01-05T10:00:05Z",
-  "finished_at": "2026-01-05T11:23:45Z",
-  "exit_code": 0,
-  "user": "u",
   "name": "train",
-  "attempts": 1
+  "user": "u",
+  "status": "completed",
+  "effective_status": "completed",
+  "exit_code": 0,
+  "attempts": 1,
+  "submitted_at_ns": 1767607200000000000,
+  "started_at_ns": 1767607205000000000,
+  "finished_at_ns": 1767612225000000000,
+  "elapsed_secs": 5020
 }
 
 --stderr--

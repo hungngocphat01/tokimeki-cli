@@ -77,38 +77,6 @@ func printRunners(out io.Writer, runners []client.Runner) error {
 
 func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
 
-// runnerJSON is the pre-engine-schema `runners --json` shape.
-// TODO(task 9): replace with client.Runner.
-type runnerJSON struct {
-	WorkerID      string `json:"worker_id"`
-	Hostname      string `json:"hostname,omitempty"`
-	PID           int    `json:"pid,omitempty"`
-	StartedAt     string `json:"started_at,omitempty"`
-	TTLHours      int64  `json:"ttl_hours,omitempty"`
-	RemainingSecs *int64 `json:"remaining_secs,omitempty"`
-	Status        string `json:"status"`
-}
-
-func runnersJSON(runners []client.Runner) []runnerJSON {
-	out := make([]runnerJSON, 0, len(runners))
-	for _, r := range runners {
-		j := runnerJSON{
-			WorkerID:  r.ID,
-			Hostname:  r.Hostname,
-			PID:       r.PID,
-			StartedAt: display.RFC3339(r.StartedAtNs),
-			TTLHours:  int64(r.TTLSecs / 3600),
-			Status:    runnerStatus(r),
-		}
-		if r.RemainingSecs != nil {
-			left := int64(*r.RemainingSecs)
-			j.RemainingSecs = &left
-		}
-		out = append(out, j)
-	}
-	return out
-}
-
 // printStats renders the stats table and then, on stderr, each distinct
 // sampler note.
 func printStats(out io.Writer, samples []client.StatsSample) error {
@@ -239,33 +207,4 @@ func gpuMemStr(s client.StatsSample) string {
 		return display.Bytes(s.GPUMemBytes) + "/" + display.Bytes(s.GPUMemTotalBytes)
 	}
 	return display.Bytes(s.GPUMemBytes)
-}
-
-// statsJSON is the pre-engine-schema `stats --json` shape.
-// TODO(task 9): replace with client.StatsSample.
-type statsJSON struct {
-	WorkerID         string  `json:"worker_id"`
-	JobID            string  `json:"job_id,omitempty"`
-	PID              int     `json:"pid,omitempty"`
-	CPUPercent       float64 `json:"cpu_percent,omitempty"`
-	RSSBytes         int64   `json:"rss_bytes,omitempty"`
-	GPUUtil          int     `json:"gpu_util_percent,omitempty"`
-	GPUMemBytes      int64   `json:"gpu_mem_bytes,omitempty"`
-	GPUMemTotalBytes int64   `json:"gpu_mem_total_bytes,omitempty"`
-	NumThreads       int     `json:"num_threads,omitempty"`
-	NumProcs         int     `json:"num_procs,omitempty"`
-	SampledAt        string  `json:"sampled_at"`
-	Note             string  `json:"note,omitempty"`
-}
-
-func statsJSONRows(samples []client.StatsSample) []statsJSON {
-	out := make([]statsJSON, 0, len(samples))
-	for _, s := range samples {
-		out = append(out, statsJSON{
-			WorkerID: s.WorkerID, JobID: s.JobID, PID: s.PID, CPUPercent: s.CPUPercent, RSSBytes: s.RSSBytes,
-			GPUUtil: s.GPUUtilPercent, GPUMemBytes: s.GPUMemBytes, GPUMemTotalBytes: s.GPUMemTotalBytes,
-			NumThreads: s.NumThreads, NumProcs: s.NumProcs, SampledAt: display.RFC3339(s.SampledAtNs), Note: s.Note,
-		})
-	}
-	return out
 }

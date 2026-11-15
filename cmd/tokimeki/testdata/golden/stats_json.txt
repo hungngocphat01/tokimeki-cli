@@ -1,25 +1,33 @@
 [
   {
     "worker_id": "w-gpu",
+    "hostname": "gpu01",
     "job_id": "a0000002",
     "pid": 999,
     "cpu_percent": 250.5,
     "rss_bytes": 2147483648,
+    "gpu_available": true,
     "gpu_util_percent": 85,
     "gpu_mem_bytes": 15890000000,
     "gpu_mem_total_bytes": 42949672960,
     "num_threads": 12,
     "num_procs": 3,
-    "sampled_at": "2026-01-05T11:25:00Z"
+    "sampled_at_ns": 1767612300000000000,
+    "stale": true
   },
   {
     "worker_id": "w-old",
+    "hostname": "old01",
     "job_id": "a0000003",
     "pid": 1234,
     "cpu_percent": 30,
     "rss_bytes": 1048576,
+    "gpu_available": false,
+    "gpu_util_percent": 0,
+    "gpu_mem_bytes": 0,
     "num_procs": 1,
-    "sampled_at": "2026-01-05T11:00:00Z",
+    "sampled_at_ns": 1767610800000000000,
+    "stale": true,
     "note": "nvidia-smi not found"
   }
 ]

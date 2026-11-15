@@ -6,7 +6,7 @@ Usage:
 
 Flags:
   -h, --help   help for job
-      --json   emit JSON only (omit script body)
+      --json   emit the job as JSON (no script body)
 
 Global Flags:
       --base string   base directory for state (default: ~/.tokimeki)

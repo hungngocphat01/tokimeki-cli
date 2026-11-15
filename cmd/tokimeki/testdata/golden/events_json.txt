@@ -1,12 +1,12 @@
-{"ts":"2026-01-05T10:00:00.123456789Z","kind":"submit","job_id":"a0000001"}
-{"ts":"2026-01-05T10:00:05.5Z","kind":"start","job_id":"a0000001","worker_id":"w-gpu"}
-{"ts":"2026-01-05T10:10:00Z","kind":"submit","job_id":"a0000002"}
-{"ts":"2026-01-05T11:23:45.000000001Z","kind":"finish","job_id":"a0000001","worker_id":"w-gpu","exit_code":0,"status":"completed"}
-{"ts":"2026-01-05T11:24:00Z","kind":"start","job_id":"a0000002","worker_id":"w-gpu"}
-{"ts":"2026-01-05T11:30:00Z","kind":"finish","job_id":"a0000002","worker_id":"w-gpu","exit_code":3,"status":"failed"}
-{"ts":"2026-01-05T12:00:00Z","kind":"killed","job_id":"a0000003","worker_id":"w-old","exit_code":143,"status":"killed"}
-{"ts":"2026-01-05T12:00:01Z","kind":"cancel","job_id":"a0000009"}
-{"ts":"2026-01-05T12:01:00Z","kind":"runner_exit","worker_id":"w-old"}
+{"ts_ns":1767607200123456789,"kind":"submit","job_id":"a0000001"}
+{"ts_ns":1767607205500000000,"kind":"start","job_id":"a0000001","worker_id":"w-gpu"}
+{"ts_ns":1767607800000000000,"kind":"submit","job_id":"a0000002"}
+{"ts_ns":1767612225000000001,"kind":"finish","job_id":"a0000001","worker_id":"w-gpu","exit_code":0,"status":"completed"}
+{"ts_ns":1767612240000000000,"kind":"start","job_id":"a0000002","worker_id":"w-gpu"}
+{"ts_ns":1767612600000000000,"kind":"finish","job_id":"a0000002","worker_id":"w-gpu","exit_code":3,"status":"failed"}
+{"ts_ns":1767614400000000000,"kind":"killed","job_id":"a0000003","worker_id":"w-old","exit_code":143,"status":"killed"}
+{"ts_ns":1767614401000000000,"kind":"cancel","job_id":"a0000009"}
+{"ts_ns":1767614460000000000,"kind":"runner_exit","worker_id":"w-old"}
 
 --stderr--
 

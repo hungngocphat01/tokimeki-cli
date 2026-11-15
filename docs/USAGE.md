@@ -78,7 +78,7 @@ export TZ=Asia/Tokyo
 
 Or system-wide via `/etc/timezone` (Linux) — Go's `time.Local` reads it.
 
-JSON output (`--json`) keeps RFC3339 / UTC for machine consumers; only the human-readable tables convert.
+JSON output (`--json`) uses Unix nanosecond timestamps and is timezone-independent; only the human-readable tables convert.
 
 ---
 
@@ -205,14 +205,14 @@ For shell scripts and AI agents:
 # Just the job ID, nothing else
 JOB=$(tok submit --quiet -c "python train.py")
 
-# JSON envelope: {"job_id":"...","position":3,"worker":"...","worker_acked":false}
+# JSON: {"job_id":"...","position":3,"worker_id":"...","worker_acked":false,"running":false}
 tok submit --json -c "python train.py" | jq .job_id
 
 # Submit, then block until done — exit code propagates from the job
 tok submit --wait -c "python train.py"
 ```
 
-`--quiet` and `--json` are mutually exclusive. `--wait` can be combined with either.
+`--quiet` and `--json` are mutually exclusive. `--wait` can be combined with either; with `--json` it prints `{"submitted": [...], "results": [{"status","exit_code"}...]}` once all jobs finish.
 
 Watch a submission live:
 
@@ -254,13 +254,13 @@ tokimeki runners -a         # include stopped
 tokimeki runners --json
 ```
 
-The `TTL` and `REMAINING` columns show the expected lifetime and time left since the runner started. Durations are displayed as days and hours (`25h` becomes `1d 1h`). A runner without TTL shows `-`; a stopped runner has no remaining time estimate. JSON includes `ttl_hours` and, for a running runner with TTL, `remaining_secs`.
+The `TTL` and `REMAINING` columns show the expected lifetime and time left since the runner started. Durations are displayed as days and hours (`25h` becomes `1d 1h`). A runner without TTL shows `-`; a stopped runner has no remaining time estimate. JSON includes `ttl_secs` and, for a running runner with TTL, `remaining_secs`.
 
 A specific job:
 
 ```bash
 tokimeki job abc12345           # human form (meta + script)
-tokimeki job abc12345 --json    # meta only
+tokimeki job abc12345 --json    # the job object, no script
 ```
 
 Combined dashboard (one-shot):
@@ -487,23 +487,57 @@ Each retry creates a new job ID with `orig_job` set to the original. View the ch
 
 ## JSON output
 
-Stable JSON for scripting:
+Every command that takes `--json` prints the engine's result types. Conventions:
 
-```bash
-tok ps --json
-tok runners --json
-tok job abc12345 --json
-tok events --json
-tok submit --json -c "..."   # {job_id, position, worker, worker_acked}
-tok stats --json             # array of {worker_id, job_id, pid, cpu_percent, rss_bytes, gpu_util_percent, gpu_mem_bytes, ...}
+- Timestamps are Unix nanoseconds in fields ending `_ns`; `0` or a missing field means unset.
+- Durations are seconds (float) in fields ending `_secs`.
+- Sizes are bytes.
+- New fields may be added; existing ones are stable.
+
+| Command | Output |
+|---|---|
+| `ps --json` | array of Job |
+| `job <id> --json` | Job |
+| `runners --json` | array of Runner |
+| `stats --json` | array of StatsSample |
+| `events --json` | NDJSON, one Event per line (works with `-f`) |
+| `submit --json` | SubmitResult; an array when several scripts are submitted |
+| `submit -r <id> --json` | SubmitResult |
+| `submit --wait --json` | `{"submitted": [SubmitResult...], "results": [WatchResult...]}`; exit code as without `--json` |
+| `watch --json` | WatchResult; exit code as without `--json` |
+| `kill --json` | `{"job_id", "worker_id", "signal"}` |
+| `cancel --json` | `{"job_id"}` |
+| `exec --json` | `{"stdout", "stderr", "exit_code"}`; exits 0 whatever the command's exit code |
+| `gc --json` | `{"dry_run", "removed": [{"kind","id","status","size_bytes"}], "warnings": [{"kind","id","error"}]}` |
+
+**Job:** `job_id`, `worker_id`, `command`, `name`, `desc`, `user`, `status` (as stored), `effective_status` (`stopped` when its runner is dead), `pid`, `exit_code` (null until finished), `priority`, `cpus`, `mem_mb`, `depends_on`, `retries`, `attempts`, `backoff_secs`, `orig_job`, `not_before_ns`, `queue_position` (1-based, active jobs only), `submitted_at_ns`, `started_at_ns`, `finished_at_ns`, `elapsed_secs`.
+
+**Runner:** `worker_id`, `has_info`, `hostname`, `pid`, `version`, `started_at_ns`, `heartbeat_ns`, `alive` (heartbeat under 30s old), `ttl_secs`, `remaining_secs`, `current_job` (`{job_id, pid, command, started_at_ns}`).
+
+**StatsSample:** `worker_id`, `hostname`, `job_id`, `pid`, `cpu_percent`, `rss_bytes`, `gpu_available`, `gpu_util_percent`, `gpu_mem_bytes`, `gpu_mem_total_bytes`, `num_threads`, `num_procs`, `sampled_at_ns`, `stale`, `note`.
+
+**Event:** `ts_ns`, `kind`, `job_id`, `worker_id`, `exit_code`, `status`, `fields`.
+
+**SubmitResult:** `job_id`, `position` (queue position at submit), `worker_id`, `worker_acked`, `running`.
+
+**WatchResult:** `status`, `exit_code` (null for killed/crashed jobs without one).
+
+### Errors
+
+With `--json`, a failure prints only this envelope on stdout and exits 1:
+
+```json
+{"error": {"code": "not_found", "message": "job nope not found"}}
 ```
 
-Field names follow the docs at `docs/SPEC.md` and the Go types in `engine/protocol/types.go`. New fields may be added; existing ones are stable.
+Codes: `not_found`, `invalid_state` (e.g. cancel a running job), `invalid_argument` (bad flags or arguments), `timeout`, `runner_rejected`, `runner_not_running`, `internal`.
 
-Example: count running jobs per worker:
+`--json` cannot be combined with `submit --live`, `submit --quiet`, or `exec -i`.
+
+Example: count active jobs per worker:
 
 ```bash
-tokimeki ps --json | jq 'group_by(.runner) | map({runner: .[0].runner, count: length})'
+tokimeki ps --json | jq 'group_by(.worker_id) | map({worker: .[0].worker_id, count: length})'
 ```
 
 ---
