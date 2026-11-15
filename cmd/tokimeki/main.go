@@ -288,7 +288,7 @@ func submitCmd() *cobra.Command {
 Use either:
 - a script path argument
 - --command/-c for an inline command
-- -r/--resubmit with a job ID (requires running daemon and --worker).`,
+- -r/--resubmit with a job ID (copies its script and settings; -w targets a runner).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			if live && (quiet || asJSON) {
@@ -300,15 +300,21 @@ Use either:
 
 			if resubmit {
 				if len(args) != 1 {
-					return fmt.Errorf("resubmit requires: submit -r -w <worker_id> <job_id>")
+					return fmt.Errorf("resubmit requires: submit -r [-w <worker_id>] <job_id>")
 				}
 				if inlineCommand != "" {
 					return fmt.Errorf("--command cannot be used with --resubmit")
 				}
-				if workerID == "" {
-					return fmt.Errorf("resubmit requires --worker/-w")
+				res, err := c.Resubmit(args[0], workerID, client.SubmitOpts{Timeout: timeout})
+				if err != nil {
+					return err
 				}
-				return c.Resubmit(workerID, args[0], timeout)
+				fmt.Printf("Job %s submitted", res.JobID)
+				if res.Position > 0 {
+					fmt.Printf(" (queue position %d)", res.Position)
+				}
+				fmt.Println()
+				return nil
 			}
 
 			var deps []string
@@ -411,7 +417,7 @@ Use either:
 			}
 			failureCode := 0
 			for _, jobID := range jobs {
-				res, err := c.Watch(jobID, client.WatchOpts{})
+				res, err := c.Watch(jobID, client.WatchOpts{OnStatus: printWatchStatus(jobID)})
 				if err != nil {
 					return err
 				}
@@ -437,7 +443,7 @@ Use either:
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().StringVarP(&workerID, "worker", "w", "", "target worker ID (optional)")
 	cmd.Flags().StringVarP(&inlineCommand, "command", "c", "", "inline command to submit to the global queue")
-	cmd.Flags().BoolVarP(&resubmit, "resubmit", "r", false, "resubmit an existing job by ID (requires running daemon)")
+	cmd.Flags().BoolVarP(&resubmit, "resubmit", "r", false, "resubmit a copy of an existing job by ID")
 	cmd.Flags().StringVar(&afterCSV, "after", "", "wait for these comma-separated job IDs to complete first")
 	cmd.Flags().IntVar(&priority, "priority", 0, "scheduling priority; higher runs sooner (default 0)")
 	cmd.Flags().IntVar(&cpus, "cpus", 0, "required CPU count (resource hint)")
@@ -454,21 +460,13 @@ Use either:
 }
 
 func submitOne(c *client.Client, spec protocol.JobSpec, path string, silent, asJSON bool, timeout time.Duration) (string, error) {
+	opts := client.SubmitOpts{Timeout: timeout}
 	if !silent {
-		if path == "" {
-			return c.DirectSubmitCommandSpecID(spec, timeout)
-		}
-		return c.DirectSubmitFileSpecID(spec, path, timeout)
+		opts.OnProgress = printSubmitProgress
 	}
-	var res client.SubmitResult
-	var err error
-	if path == "" {
-		res, err = c.SubmitCommandSpec(spec, timeout)
-	} else {
-		res, err = c.SubmitFileSpec(spec, path, timeout)
-	}
-	if err != nil {
-		return "", err
+	res, err := submitSpec(c, spec, path, opts)
+	if err != nil || !silent {
+		return res.JobID, err
 	}
 	if asJSON {
 		b, err := json.Marshal(res)
@@ -482,23 +480,54 @@ func submitOne(c *client.Client, spec protocol.JobSpec, path string, silent, asJ
 	return res.JobID, nil
 }
 
-func submitLiveOne(c *client.Client, spec protocol.JobSpec, path string, timeout time.Duration) (client.SubmitResult, error) {
-	var res client.SubmitResult
-	var err error
+// submitSpec submits an inline command (path empty) or a script file.
+func submitSpec(c *client.Client, spec protocol.JobSpec, path string, opts client.SubmitOpts) (client.SubmitResult, error) {
 	if path == "" {
-		res, err = c.SubmitCommandSpec(spec, timeout)
-	} else {
-		res, err = c.SubmitFileSpec(spec, path, timeout)
+		return c.Submit(spec, opts)
 	}
+	return c.SubmitFile(spec, path, opts)
+}
+
+// printSubmitProgress prints each submit stage as it happens, so the queue
+// position shows before the runner ack arrives.
+func printSubmitProgress(stage client.SubmitStage, res client.SubmitResult) {
+	switch stage {
+	case client.SubmitQueued:
+		if res.Worker == "" {
+			fmt.Printf("Job %s submitted to global queue\n", res.JobID)
+		} else {
+			fmt.Printf("Job %s submitted to global queue (target worker: %s)\n", res.JobID, res.Worker)
+		}
+		if res.Position > 0 {
+			fmt.Printf("Global queue position: %d\n", res.Position)
+		}
+	case client.SubmitAcked:
+		if res.WorkerAcked {
+			fmt.Printf("Runner %s is running and acknowledged\n", res.Worker)
+		} else {
+			fmt.Printf("Runner %s is not running yet. Job will be picked up when it starts.\n", res.Worker)
+		}
+	}
+}
+
+func submitLiveOne(c *client.Client, spec protocol.JobSpec, path string, timeout time.Duration) (client.SubmitResult, error) {
+	res, err := submitSpec(c, spec, path, client.SubmitOpts{
+		Timeout: timeout,
+		OnProgress: func(stage client.SubmitStage, res client.SubmitResult) {
+			if stage != client.SubmitQueued {
+				return
+			}
+			fmt.Printf("Job %s submitted to global queue\n", res.JobID)
+			if res.Position > 0 {
+				fmt.Printf("Global queue position: %d\n", res.Position)
+			}
+			if res.Worker != "" {
+				fmt.Printf("Target runner: %s\n", res.Worker)
+			}
+		},
+	})
 	if err != nil {
 		return res, err
-	}
-	fmt.Printf("Job %s submitted to global queue\n", res.JobID)
-	if res.Position > 0 {
-		fmt.Printf("Global queue position: %d\n", res.Position)
-	}
-	if res.Worker != "" {
-		fmt.Printf("Target runner: %s\n", res.Worker)
 	}
 	if res.WorkerAcked {
 		fmt.Println("Worker acknowledgment: received")
@@ -705,7 +734,7 @@ func execCmd() *cobra.Command {
 			if interactive {
 				return c.ExecInteractive(workerID, command, timeout)
 			}
-			return c.Exec(workerID, command, timeout)
+			return runExec(c, workerID, command, timeout)
 		},
 	}
 
@@ -731,6 +760,7 @@ back to this machine over TLS. The shared filesystem is only used to set it up.`
 		ValidArgsFunction: completeWorkerIDs,
 		SilenceUsage:      true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			opts.Status = os.Stderr
 			code, err := client.New(resolveBase()).Shell(args[0], opts)
 			if err != nil {
 				return err
@@ -782,6 +812,21 @@ func shellDaemonCmd() *cobra.Command {
 	return cmd
 }
 
+// runExec runs command on a runner, copies its output to ours, and turns a
+// non-zero exit into an error.
+func runExec(c *client.Client, workerID, command string, timeout time.Duration) error {
+	res, err := c.Exec(workerID, command, timeout)
+	if err != nil {
+		return err
+	}
+	fmt.Fprint(os.Stdout, res.Stdout)
+	fmt.Fprint(os.Stderr, res.Stderr)
+	if res.ExitCode != 0 {
+		return fmt.Errorf("exec command exited with code %d", res.ExitCode)
+	}
+	return nil
+}
+
 // kp is a short form for running `killall python` on a runner.
 func kpCmd() *cobra.Command {
 	var timeout time.Duration
@@ -791,7 +836,7 @@ func kpCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkerIDs,
 		RunE: func(_ *cobra.Command, args []string) error {
-			return client.New(resolveBase()).Exec(args[0], "killall python", timeout)
+			return runExec(client.New(resolveBase()), args[0], "killall python", timeout)
 		},
 	}
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
@@ -821,10 +866,20 @@ only when meta is missing or corrupt).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			jobID := args[0]
+			var err error
 			if worker != "" {
-				return c.Kill(worker, jobID, sig, timeout)
+				err = c.Kill(worker, jobID, sig, timeout)
+			} else {
+				_, err = c.KillJob(jobID, sig, timeout)
 			}
-			return c.KillJob(jobID, sig, timeout)
+			if err != nil {
+				return err
+			}
+			if sig == 0 {
+				sig = 15
+			}
+			fmt.Printf("Kill signal %d sent to job %s\n", sig, jobID)
+			return nil
 		},
 	}
 
@@ -843,8 +898,11 @@ func cancelCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeJobIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := client.New(resolveBase())
-			return c.Cancel(args[0])
+			if err := client.New(resolveBase()).Cancel(args[0]); err != nil {
+				return err
+			}
+			fmt.Printf("Canceled queued job %s\n", args[0])
+			return nil
 		},
 	}
 }
@@ -1058,11 +1116,11 @@ func watchCmd() *cobra.Command {
 		ValidArgsFunction: completeJobIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			res, err := c.Watch(args[0], client.WatchOpts{
-				Interval: interval,
-				Quiet:    quiet,
-				Timeout:  timeout,
-			})
+			opts := client.WatchOpts{Interval: interval, Timeout: timeout}
+			if !quiet {
+				opts.OnStatus = printWatchStatus(args[0])
+			}
+			res, err := c.Watch(args[0], opts)
 			if err != nil {
 				return err
 			}
@@ -1086,6 +1144,10 @@ func watchCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&quiet, "quiet", "q", false, "only print final status (or nothing if exit code is 0)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "max wait before giving up (0 = forever)")
 	return cmd
+}
+
+func printWatchStatus(jobID string) func(string) {
+	return func(status string) { fmt.Printf("[watch %s] %s\n", jobID, status) }
 }
 
 // --- stats ---
@@ -1141,8 +1203,12 @@ func gcCmd() *cobra.Command {
 				}
 				opts.MaxSize = n
 			}
-			c := client.New(resolveBase())
-			return c.GC(opts)
+			rep, err := client.New(resolveBase()).GC(opts)
+			if err != nil {
+				return err
+			}
+			printGCReport(rep)
+			return nil
 		},
 	}
 
@@ -1150,4 +1216,53 @@ func gcCmd() *cobra.Command {
 	cmd.Flags().StringVar(&maxSize, "max-size", "", "cap total size of terminal job dirs (e.g. 10G, 500M)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "print what would be removed without removing")
 	return cmd
+}
+
+func printGCReport(rep client.GCReport) {
+	verb := "removed"
+	if rep.DryRun {
+		verb = "would remove"
+	}
+	for _, item := range rep.Removed {
+		switch item.Kind {
+		case client.GCDeadWorker:
+			fmt.Printf("%s dead worker: %s\n", verb, item.ID)
+		case client.GCExpiredJob:
+			fmt.Printf("%s job: %s (%s)\n", verb, item.ID, item.Status)
+		case client.GCSizeCapJob:
+			fmt.Printf("%s job (size cap): %s (%s, %s)\n", verb, item.ID, item.Status, formatSize(item.SizeBytes))
+		}
+	}
+	for _, w := range rep.Warnings {
+		what := map[client.GCItemKind]string{client.GCDeadWorker: "worker", client.GCTmpFile: "tmp"}[w.Kind]
+		if what == "" {
+			what = "job"
+		}
+		fmt.Fprintf(os.Stderr, "warning: remove %s %s: %v\n", what, w.ID, w.Err)
+	}
+	if rep.DryRun {
+		fmt.Printf("GC dry-run: %d items would be removed\n", len(rep.Removed))
+	} else {
+		fmt.Printf("GC complete: %d items removed\n", len(rep.Removed))
+	}
+}
+
+// formatSize renders a byte count as 1.5K / 2.0M / 3.1G. Moves to the display
+// package in a later step.
+func formatSize(n int64) string {
+	const (
+		KB = 1 << 10
+		MB = 1 << 20
+		GB = 1 << 30
+	)
+	switch {
+	case n >= GB:
+		return fmt.Sprintf("%.1fG", float64(n)/GB)
+	case n >= MB:
+		return fmt.Sprintf("%.1fM", float64(n)/MB)
+	case n >= KB:
+		return fmt.Sprintf("%.1fK", float64(n)/KB)
+	default:
+		return fmt.Sprintf("%dB", n)
+	}
 }

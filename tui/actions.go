@@ -13,9 +13,7 @@ import (
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
 	"github.com/hungngocphat01/tokimeki/client"
-	"github.com/hungngocphat01/tokimeki/eventlog"
 	"github.com/hungngocphat01/tokimeki/protocol"
-	"github.com/hungngocphat01/tokimeki/registry"
 )
 
 type action string
@@ -50,46 +48,28 @@ func runAction(paths *protocol.Paths, selected job, kind action) actionResult {
 			return result
 		}
 	}
+	c := client.New(paths.Base)
 	switch kind {
 	case killAction:
 		if selected.Status != protocol.StatusRunning || selected.WorkerID == "" {
 			result.err = fmt.Errorf("job is no longer running")
 			break
 		}
-		response, err := client.New(paths.Base).SendRequest(selected.WorkerID, protocol.TypeKill,
-			protocol.RequestPayload{JobID: selected.JobID, Signal: 15}, 30*time.Second)
-		result.err = responseError(response, err)
+		result.err = c.Kill(selected.WorkerID, selected.JobID, 15, 30*time.Second)
 	case pythonAction:
 		if selected.Status != protocol.StatusRunning || selected.WorkerID == "" {
 			result.err = fmt.Errorf("job is no longer running")
 			break
 		}
-		response, err := client.New(paths.Base).SendRequest(selected.WorkerID, protocol.TypeExec,
-			protocol.RequestPayload{Command: "killall python"}, 30*time.Second)
-		result.err = responseError(response, err)
-		if result.err == nil && response.Data.ExitCode != nil && *response.Data.ExitCode != 0 {
-			result.err = fmt.Errorf("killall python exited with code %d", *response.Data.ExitCode)
+		res, err := c.Exec(selected.WorkerID, "killall python", 30*time.Second)
+		result.err = err
+		if err == nil && res.ExitCode != 0 {
+			result.err = fmt.Errorf("killall python exited with code %d", res.ExitCode)
 		}
 	case cancelAction:
-		result.err = registry.New(paths).CancelQueuedJob(selected.JobID)
-		if result.err == nil {
-			_ = eventlog.Append(paths, eventlog.Event{Kind: eventlog.KindCancel, JobID: selected.JobID})
-		}
+		result.err = c.Cancel(selected.JobID)
 	}
 	return result
-}
-
-func responseError(response *protocol.Response, err error) error {
-	if err != nil {
-		return err
-	}
-	if response == nil || !response.OK {
-		if response != nil && response.Error != "" {
-			return fmt.Errorf("runner: %s", response.Error)
-		}
-		return fmt.Errorf("runner rejected the request")
-	}
-	return nil
 }
 
 func scriptLines(paths *protocol.Paths, jobID string) ([]string, error) {
