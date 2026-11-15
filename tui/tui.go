@@ -7,12 +7,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"sort"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/client"
 	"github.com/hungngocphat01/tokimeki/protocol"
 )
 
@@ -46,7 +45,7 @@ type model struct {
 	jobs, history []job
 	workers       []worker
 	runnerStats   bool
-	events        []eventlog.Event
+	events        []client.Event
 	feature       feature
 	selected      [featureCount]int
 	focus         int // 0: features, 1: items, 2: details
@@ -254,47 +253,25 @@ func (m *model) applySnapshot(state snapshot) {
 	}
 	m.refreshSelected()
 }
+
+// orderJobs returns the active jobs in dispatch order, or with showAll every
+// job as loaded (submission order).
 func orderJobs(all []job, showAll bool) []job {
-	ordered := make([]job, 0, len(all))
-	for _, item := range all {
-		if showAll || item.effectiveStatus == protocol.StatusRunning || item.effectiveStatus == protocol.StatusQueued {
-			ordered = append(ordered, item)
-		}
+	if showAll {
+		return append([]job(nil), all...)
 	}
-	sort.Slice(ordered, func(i, j int) bool {
-		left, right := ordered[i], ordered[j]
-		if showAll {
-			if left.SubmittedAt != right.SubmittedAt {
-				return left.SubmittedAt < right.SubmittedAt
-			}
-			return left.JobID < right.JobID
-		}
-		li, ri := jobRank(left.effectiveStatus), jobRank(right.effectiveStatus)
-		if li != ri {
-			return li < ri
-		}
-		if left.Priority != right.Priority {
-			return left.Priority > right.Priority
-		}
-		leftTime, rightTime := jobSortTime(left), jobSortTime(right)
-		if leftTime != rightTime {
-			return leftTime < rightTime
-		}
-		return left.JobID < right.JobID
-	})
+	byID := make(map[string]job, len(all))
+	plain := make([]client.Job, len(all))
+	for i, item := range all {
+		byID[item.ID] = item
+		plain[i] = item.Job
+	}
+	active := client.ActiveJobs(plain)
+	ordered := make([]job, len(active))
+	for i, item := range active {
+		ordered[i] = byID[item.ID]
+	}
 	return ordered
-}
-func jobSortTime(item job) string {
-	if item.StartedAt != nil && *item.StartedAt != "" {
-		return *item.StartedAt
-	}
-	return item.SubmittedAt
-}
-func jobRank(status string) int {
-	if status == protocol.StatusRunning {
-		return 0
-	}
-	return 1
 }
 func (m model) countFor(f feature) int {
 	switch f {
@@ -331,7 +308,7 @@ func (m model) currentWorker() *worker {
 	}
 	return nil
 }
-func (m model) currentEvent() *eventlog.Event {
+func (m model) currentEvent() *client.Event {
 	index := m.selected[activityFeature]
 	if m.feature == activityFeature && index >= 0 && index < len(m.events) {
 		return &m.events[index]
@@ -343,20 +320,20 @@ func (m model) itemKey(f feature) string {
 	switch f {
 	case jobsFeature:
 		if i < len(m.jobs) {
-			return m.jobs[i].JobID
+			return m.jobs[i].ID
 		}
 	case historyFeature:
 		if i < len(m.history) {
-			return m.history[i].JobID
+			return m.history[i].ID
 		}
 	case runnersFeature:
 		if i < len(m.workers) {
-			return m.workers[i].info.WorkerID
+			return m.workers[i].ID
 		}
 	case activityFeature:
 		if i < len(m.events) {
 			e := m.events[i]
-			return fmt.Sprintf("%s:%s:%s:%s", e.TS, e.Kind, e.JobID, e.WorkerID)
+			return fmt.Sprintf("%d:%s:%s:%s", e.TSNs, e.Kind, e.JobID, e.WorkerID)
 		}
 	}
 	return ""
@@ -374,15 +351,15 @@ func (m *model) selectAction(key string) {
 	}
 	switch key {
 	case "k":
-		if selected.effectiveStatus == protocol.StatusRunning {
+		if selected.EffectiveStatus == protocol.StatusRunning {
 			m.confirm = &pendingAction{killAction, *selected}
 		}
 	case "p":
-		if selected.effectiveStatus == protocol.StatusRunning && selected.WorkerID != "" {
+		if selected.EffectiveStatus == protocol.StatusRunning && selected.Worker != "" {
 			m.confirm = &pendingAction{pythonAction, *selected}
 		}
 	case "c":
-		if selected.effectiveStatus == protocol.StatusQueued {
+		if selected.EffectiveStatus == protocol.StatusQueued {
 			m.confirm = &pendingAction{cancelAction, *selected}
 		}
 	}
@@ -400,7 +377,7 @@ func (m model) openShell() tea.Cmd {
 	if err != nil {
 		return func() tea.Msg { return shellFinishedMsg{fmt.Sprintf("shell: %v", err)} }
 	}
-	workerID := selected.info.WorkerID
+	workerID := selected.ID
 	cmd := exec.Command(executable, "shell", workerID, "--base", m.paths.Base)
 	// The remote terminal only writes to stdout, so stderr carries just our own
 	// messages. Keep a copy to show failures after the dashboard redraws.
@@ -431,9 +408,9 @@ func (m *model) toggleScript() {
 		m.scriptOpen = false
 		return
 	}
-	lines, err := scriptLines(m.paths, selected.JobID)
+	lines, err := scriptLines(m.paths, selected.ID)
 	if err != nil {
-		m.notice = fmt.Sprintf("script %s: %v", selected.JobID, err)
+		m.notice = fmt.Sprintf("script %s: %v", selected.ID, err)
 		return
 	}
 	m.script, m.scriptOpen, m.detailOffset, m.focus = lines, true, 0, 2
@@ -451,7 +428,7 @@ func (m *model) jumpFromEvent() bool {
 				items = m.history
 			}
 			for i, item := range items {
-				if item.JobID == e.JobID {
+				if item.ID == e.JobID {
 					m.feature, m.selected[f], m.focus, m.detailOffset = f, i, 1, 0
 					m.refreshSelected()
 					m.detailSection = 0
@@ -461,7 +438,7 @@ func (m *model) jumpFromEvent() bool {
 		}
 	}
 	for i, item := range m.workers {
-		if e.WorkerID != "" && item.info.WorkerID == e.WorkerID {
+		if e.WorkerID != "" && item.ID == e.WorkerID {
 			m.feature, m.selected[runnersFeature], m.focus, m.detailOffset = runnersFeature, i, 1, 0
 			m.detailSection = 0
 			return true
@@ -503,10 +480,10 @@ func (m model) statusLine() string {
 		if m.scriptOpen {
 			return "s/Esc logs  v pane  ↑/↓ scroll  PgUp/PgDn page  q quit"
 		}
-		if selected.effectiveStatus == protocol.StatusQueued {
+		if selected.EffectiveStatus == protocol.StatusQueued {
 			return "c cancel  s script  v pane  ←/→ focus  ↑/↓ select/scroll  q quit"
 		}
-		if selected.effectiveStatus == protocol.StatusRunning {
+		if selected.EffectiveStatus == protocol.StatusRunning {
 			return "k kill  p killall python  s script  v pane  ←/→ focus  ↑/↓ select/scroll  q quit"
 		}
 		return "s script  v pane  ←/→ focus  ↑/↓ select/scroll  q quit"
@@ -527,11 +504,11 @@ func (m model) noticeLine() string {
 	if m.confirm != nil {
 		switch m.confirm.kind {
 		case killAction:
-			return "Send SIGTERM to job " + m.confirm.job.JobID + "?"
+			return "Send SIGTERM to job " + m.confirm.job.ID + "?"
 		case pythonAction:
-			return "Run killall python on runner " + m.confirm.job.WorkerID + "? This affects all Python processes there."
+			return "Run killall python on runner " + m.confirm.job.Worker + "? This affects all Python processes there."
 		case cancelAction:
-			return "Cancel queued job " + m.confirm.job.JobID + "?"
+			return "Cancel queued job " + m.confirm.job.ID + "?"
 		}
 	}
 	if m.busy {

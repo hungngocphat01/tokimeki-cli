@@ -11,8 +11,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hungngocphat01/tokimeki/client"
-	"github.com/hungngocphat01/tokimeki/eventlog"
 	"github.com/hungngocphat01/tokimeki/protocol"
+	"github.com/ngocphat/tokimeki-cli/display"
 )
 
 var (
@@ -108,16 +108,15 @@ func (m model) itemLabel(index int) (string, string) {
 		if name == "" {
 			name = item.Command
 		}
-		return fmt.Sprintf("%s %s %s", client.StatusDisplay(item.effectiveStatus, true), item.JobID, name), item.effectiveStatus
+		return fmt.Sprintf("%s %s %s", display.StatusDisplay(item.EffectiveStatus, true), item.ID, name), item.EffectiveStatus
 	case runnersFeature:
 		item := m.workers[index]
-		return item.info.WorkerID, item.displayStatus()
+		return item.ID, item.displayStatus()
 	case activityFeature:
 		item := m.events[index]
-		at, err := time.Parse(time.RFC3339Nano, item.TS)
 		clock := "?"
-		if err == nil {
-			clock = at.Local().Format("15:04:05")
+		if item.TSNs != 0 {
+			clock = time.Unix(0, item.TSNs).Local().Format("15:04:05")
 		}
 		subject := item.JobID
 		if subject == "" {
@@ -126,8 +125,8 @@ func (m model) itemLabel(index int) (string, string) {
 		label := fmt.Sprintf("%s %-12s %s", clock, item.Kind, subject)
 		if item.JobID != "" {
 			for _, job := range m.history {
-				if job.JobID == item.JobID {
-					if name := client.SmartCommand(job.Command); name != "" {
+				if job.ID == item.JobID {
+					if name := display.SmartCommand(job.Command); name != "" {
 						label += "  " + name
 					}
 					break
@@ -153,31 +152,31 @@ func (m model) runnerStatsLines(width, height int) []string {
 			marker = "›"
 		}
 		jobID, pid := "-", "-"
-		if item.current != nil {
-			jobID = item.current.JobID
-			pid = fmt.Sprintf("%d", item.current.PID)
+		if item.Current != nil {
+			jobID = item.Current.JobID
+			pid = fmt.Sprintf("%d", item.Current.PID)
 		}
-		label := fmt.Sprintf(" %s %s  HOST %s  JOB %s  PID %s", marker, item.info.WorkerID, item.info.Hostname, jobID, pid)
+		label := fmt.Sprintf(" %s %s  HOST %s  JOB %s  PID %s", marker, item.ID, item.Hostname, jobID, pid)
 		if i == m.selected[runnersFeature] {
 			label = lipgloss.NewStyle().Foreground(accent).Bold(true).Render(fit(label, width))
 		}
 		lines = append(lines, label)
-		if item.current == nil {
+		if item.Current == nil {
 			lines = append(lines, "    idle · no active job", "")
 		} else if item.stats == nil {
 			lines = append(lines, "    Waiting for a fresh stats sample", "")
 		} else {
 			s := item.stats
-			gpu := fmt.Sprintf("%d%%", s.GPUUtil)
+			gpu := fmt.Sprintf("%d%%", s.GPUUtilPercent)
 			gpuMem := formatBytes(s.GPUMemBytes)
-			if strings.Contains(s.Note, "nvidia-smi") || strings.Contains(s.Note, "non-linux") {
+			if noGPU(s) {
 				gpu, gpuMem = "n/a", "n/a"
 			} else if s.GPUMemTotalBytes > 0 {
 				gpuMem += "/" + formatBytes(s.GPUMemTotalBytes)
 			}
 			age := "?"
-			if sampled, err := time.Parse(time.RFC3339, s.SampledAt); err == nil {
-				age = fmt.Sprintf("%ds", max(0, int(time.Since(sampled).Seconds())))
+			if s.SampledAtNs != 0 {
+				age = fmt.Sprintf("%ds", max(0, int(time.Since(time.Unix(0, s.SampledAtNs)).Seconds())))
 			}
 			lines = append(lines,
 				fmt.Sprintf("    CPU %.0f%%   RSS %s   GPU %s", s.CPUPercent, formatBytes(s.RSSBytes), gpu),
@@ -210,13 +209,13 @@ func statusColor(status string) color.Color {
 		return muted // stopped/unknown
 	}
 }
-func eventStatus(item eventlog.Event) string {
+func eventStatus(item client.Event) string {
 	switch item.Kind {
-	case eventlog.KindSubmit, eventlog.KindClaim, eventlog.KindCancel:
+	case client.EventSubmit, client.EventClaim, client.EventCancel:
 		return protocol.StatusQueued
-	case eventlog.KindStart:
+	case client.EventStart:
 		return protocol.StatusRunning
-	case eventlog.KindFinish:
+	case client.EventFinish:
 		if item.Status != "" {
 			return item.Status
 		}
@@ -224,14 +223,14 @@ func eventStatus(item eventlog.Event) string {
 			return protocol.StatusCompleted
 		}
 		return protocol.StatusFailed
-	case eventlog.KindKilled:
+	case client.EventKilled:
 		return protocol.StatusKilled
-	case eventlog.KindCrashed:
+	case client.EventCrashed:
 		return protocol.StatusCrashed
-	case eventlog.KindRunnerStart:
+	case client.EventRunnerStart:
 		return protocol.StatusCompleted
 	}
-	return "stopped"
+	return client.StatusStopped
 }
 func (m model) renderDetail(width, height int) string {
 	switch m.feature {
@@ -258,10 +257,10 @@ func (m model) renderJobDetail(width, height int) string {
 	upperHeight, lowerHeight := splitHeight(height)
 	title := "Logs"
 	if selected != nil {
-		title += " · " + selected.JobID
+		title += " · " + selected.ID
 	}
 	if m.scriptOpen && selected != nil {
-		title = "Script · " + selected.JobID
+		title = "Script · " + selected.ID
 	}
 	upper := pane(title, m.jobDetailLines(upperHeight-1), width, upperHeight, m.focus == 2 && m.detailSection == 0)
 	lowerTitle := "Resources / status"
@@ -310,34 +309,34 @@ func headWindow(lines []string, height, offset int) []string {
 	return lines[start:min(len(lines), start+height)]
 }
 func jobStatusLines(item job, all []job, width int, showTiming bool) []string {
-	lines := []string{fmt.Sprintf(" %s · %s", client.StatusDisplay(item.effectiveStatus, false), item.JobID)}
+	lines := []string{fmt.Sprintf(" %s · %s", display.StatusDisplay(item.EffectiveStatus, false), item.ID)}
 	if showTiming {
 		lines = append(lines, jobTimingLines(item, time.Now())...)
 	}
 	if item.Name != "" {
 		lines = append(lines, " Name: "+cleanText(item.Name))
 	}
-	if item.effectiveStatus == protocol.StatusRunning {
+	if item.EffectiveStatus == protocol.StatusRunning {
 		lines = append(lines, metricLines(&item, width)...)
-	} else if item.effectiveStatus == protocol.StatusQueued {
+	} else if item.EffectiveStatus == protocol.StatusQueued {
 		pos := "unknown"
-		if item.queuePosition > 0 {
-			pos = fmt.Sprintf("%d (stored order)", item.queuePosition)
+		if item.QueuePosition > 0 {
+			pos = fmt.Sprintf("%d (stored order)", item.QueuePosition)
 		}
-		target := item.WorkerID
+		target := item.Worker
 		if target == "" {
 			target = "any runner"
 		}
 		lines = append(lines, " Queue: "+pos, " Target: "+target, fmt.Sprintf(" Priority: %d", item.Priority))
-		if item.NotBefore != "" {
-			lines = append(lines, " Not before: "+item.NotBefore)
+		if item.NotBeforeNs != 0 {
+			lines = append(lines, " Not before: "+display.RFC3339(item.NotBeforeNs))
 		}
 		if len(item.DependsOn) > 0 {
 			for _, id := range item.DependsOn {
 				status := "unknown"
 				for _, dep := range all {
-					if dep.JobID == id {
-						status = dep.effectiveStatus
+					if dep.ID == id {
+						status = dep.EffectiveStatus
 						break
 					}
 				}
@@ -348,12 +347,12 @@ func jobStatusLines(item job, all []job, width int, showTiming bool) []string {
 		if item.ExitCode != nil {
 			lines = append(lines, fmt.Sprintf(" Exit: %d", *item.ExitCode))
 		}
-		if item.FinishedAt != nil {
-			lines = append(lines, " Finished: "+*item.FinishedAt)
+		if item.FinishedAtNs != 0 {
+			lines = append(lines, " Finished: "+display.RFC3339(item.FinishedAtNs))
 		}
 	}
-	if item.WorkerID != "" && item.effectiveStatus != protocol.StatusQueued {
-		lines = append(lines, " Runner: "+item.WorkerID)
+	if item.Worker != "" && item.EffectiveStatus != protocol.StatusQueued {
+		lines = append(lines, " Runner: "+item.Worker)
 	}
 	if item.Attempts > 0 || item.Retries > 0 {
 		lines = append(lines, fmt.Sprintf(" Attempt: %d / %d retries", item.Attempts, item.Retries))
@@ -365,21 +364,18 @@ func jobStatusLines(item job, all []job, width int, showTiming bool) []string {
 }
 func jobTimingLines(item job, now time.Time) []string {
 	submitted := "unknown"
-	if at, err := time.Parse(time.RFC3339Nano, item.SubmittedAt); err == nil {
-		submitted = at.Local().Format("2006-01-02 15:04:05 MST")
+	if item.SubmittedAtNs != 0 {
+		submitted = time.Unix(0, item.SubmittedAtNs).Local().Format("2006-01-02 15:04:05 MST")
 	}
 	lines := []string{" Submitted: " + submitted}
-	start := item.SubmittedAt
+	start := item.SubmittedAtNs
 	context := "since submission"
-	if item.effectiveStatus == protocol.StatusRunning {
-		start = ""
-		if item.StartedAt != nil {
-			start = *item.StartedAt
-		}
+	if item.EffectiveStatus == protocol.StatusRunning {
+		start = item.StartedAtNs
 		context = "since start"
 	}
 	elapsed := "unknown"
-	if at, err := time.Parse(time.RFC3339Nano, start); err == nil && !at.After(now) {
+	if at := time.Unix(0, start); start != 0 && !at.After(now) {
 		elapsed = formatElapsed(now.Sub(at))
 	}
 	return append(lines, fmt.Sprintf(" Elapsed: %s (%s)", elapsed, context))
@@ -410,23 +406,27 @@ func (m model) renderRunnerDetail(width, height int) string {
 	info := []string{"", "  Select a runner"}
 	resources := []string{"  No current job sample"}
 	if selected != nil {
-		title += " · " + selected.info.WorkerID
-		info = []string{" Status: " + selected.displayStatus(), " Host: " + cleanText(selected.info.Hostname), fmt.Sprintf(" Daemon PID: %d", selected.info.PID), " Started: " + selected.info.StartedAt}
-		if selected.info.TTLHours > 0 {
-			info = append(info, " TTL: "+protocol.FormatTTL(time.Duration(selected.info.TTLHours)*time.Hour), " Remaining: "+selected.remainingTTL(time.Now()))
+		title += " · " + selected.ID
+		info = []string{" Status: " + selected.displayStatus(), " Host: " + cleanText(selected.Hostname), fmt.Sprintf(" Daemon PID: %d", selected.PID), " Started: " + display.RFC3339(selected.StartedAtNs)}
+		if selected.TTLSecs > 0 {
+			remaining := "-"
+			if selected.RemainingSecs != nil {
+				remaining = display.TTL(time.Duration(*selected.RemainingSecs * float64(time.Second)))
+			}
+			info = append(info, " TTL: "+display.TTL(time.Duration(selected.TTLSecs*float64(time.Second))), " Remaining: "+remaining)
 		}
-		if !selected.heartbeat.IsZero() {
-			info = append(info, fmt.Sprintf(" Heartbeat: %ds ago", max(0, int(time.Since(selected.heartbeat).Seconds()))))
+		if selected.HeartbeatNs != 0 {
+			info = append(info, fmt.Sprintf(" Heartbeat: %ds ago", max(0, int(time.Since(time.Unix(0, selected.HeartbeatNs)).Seconds()))))
 		}
-		if selected.current != nil {
+		if selected.Current != nil {
 			label := " Current"
-			if selected.status != "running" {
+			if !selected.Alive {
 				label = " Last recorded"
 			}
-			info = append(info, fmt.Sprintf("%s job: %s", label, selected.current.JobID), fmt.Sprintf(" Job PID: %d", selected.current.PID), " Command: "+cleanText(selected.current.Command))
+			info = append(info, fmt.Sprintf("%s job: %s", label, selected.Current.JobID), fmt.Sprintf(" Job PID: %d", selected.Current.PID), " Command: "+cleanText(selected.Current.Command))
 		}
 		if selected.stats != nil {
-			item := job{JobMeta: protocol.JobMeta{Status: protocol.StatusRunning}, effectiveStatus: protocol.StatusRunning, stats: selected.stats}
+			item := job{Job: client.Job{Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}, stats: selected.stats}
 			resources = metricLines(&item, width-1)
 		}
 	}
@@ -438,7 +438,7 @@ func (m model) renderActivityDetail(width, height int) string {
 	selected := m.currentEvent()
 	lines := []string{"", "  Select an event"}
 	if selected != nil {
-		lines = []string{" Kind: " + selected.Kind, " Time: " + selected.TS}
+		lines = []string{" Kind: " + selected.Kind, " Time: " + display.RFC3339Nano(selected.TSNs)}
 		if selected.JobID != "" {
 			lines = append(lines, " Job: "+selected.JobID)
 		}
@@ -461,8 +461,8 @@ func (m model) renderActivityDetail(width, height int) string {
 		}
 		if selected.JobID != "" {
 			for _, item := range m.history {
-				if item.JobID == selected.JobID {
-					lines = append(lines, "", " Current job status: "+item.effectiveStatus)
+				if item.ID == selected.JobID {
+					lines = append(lines, "", " Current job status: "+item.EffectiveStatus)
 					break
 				}
 			}
@@ -481,18 +481,24 @@ func metricLines(selected *job, width int) []string {
 		pct := 100 * float64(s.RSSBytes) / float64(selected.MemMB*1024*1024)
 		lines[1] = fmt.Sprintf(" RAM  %s  %s / %d MiB hint", bar(pct, barWidth), formatBytes(s.RSSBytes), selected.MemMB)
 	}
-	if strings.Contains(s.Note, "nvidia-smi") || strings.Contains(s.Note, "non-linux") {
+	if noGPU(s) {
 		lines = append(lines, " GPU  n/a · "+s.Note)
 	} else {
-		lines = append(lines, fmt.Sprintf(" GPU  %s  %d%%", bar(float64(s.GPUUtil), barWidth), s.GPUUtil))
+		lines = append(lines, fmt.Sprintf(" GPU  %s  %d%%", bar(float64(s.GPUUtilPercent), barWidth), s.GPUUtilPercent))
 		if s.GPUMemTotalBytes > 0 {
 			pct := 100 * float64(s.GPUMemBytes) / float64(s.GPUMemTotalBytes)
 			lines = append(lines, fmt.Sprintf(" VRAM %s  %s / %s", bar(pct, barWidth), formatBytes(s.GPUMemBytes), formatBytes(s.GPUMemTotalBytes)))
 		}
 	}
-	when, _ := time.Parse(time.RFC3339, s.SampledAt)
+	when := time.Unix(0, s.SampledAtNs)
 	lines = append(lines, fmt.Sprintf(" %d processes · sampled %ds ago", s.NumProcs, max(0, int(time.Since(when).Seconds()))))
 	return lines
+}
+
+// noGPU reports a sample without GPU data: no nvidia-smi, or a platform the
+// runner cannot sample at all.
+func noGPU(s *client.StatsSample) bool {
+	return !s.GPUAvailable || strings.Contains(s.Note, "non-linux")
 }
 func bar(percent float64, width int) string {
 	filled := max(0, min(width, int(percent*float64(width)/100)))

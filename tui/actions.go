@@ -2,10 +2,7 @@ package tui
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -31,58 +28,48 @@ type actionResult struct {
 }
 
 func runAction(paths *protocol.Paths, selected job, kind action) actionResult {
-	result := actionResult{action: kind, jobID: selected.JobID}
+	result := actionResult{action: kind, jobID: selected.ID}
+	c := client.New(paths.Base)
 	if kind == killAction || kind == pythonAction {
-		data, err := os.ReadFile(paths.JobMeta(selected.JobID))
+		current, err := c.JobRecord(selected.ID)
 		if err != nil {
 			result.err = fmt.Errorf("read job: %w", err)
 			return result
 		}
-		var current protocol.JobMeta
-		if err := json.Unmarshal(data, &current); err != nil {
-			result.err = fmt.Errorf("read job status: %w", err)
-			return result
-		}
-		if current.Status != protocol.StatusRunning || current.WorkerID != selected.WorkerID {
-			result.err = fmt.Errorf("job is no longer running on %s", selected.WorkerID)
+		if current.Status != protocol.StatusRunning || current.WorkerID != selected.Worker {
+			result.err = fmt.Errorf("job is no longer running on %s", selected.Worker)
 			return result
 		}
 	}
-	c := client.New(paths.Base)
 	switch kind {
 	case killAction:
-		if selected.Status != protocol.StatusRunning || selected.WorkerID == "" {
+		if selected.Status != protocol.StatusRunning || selected.Worker == "" {
 			result.err = fmt.Errorf("job is no longer running")
 			break
 		}
-		result.err = c.Kill(selected.WorkerID, selected.JobID, 15, 30*time.Second)
+		result.err = c.Kill(selected.Worker, selected.ID, 15, 30*time.Second)
 	case pythonAction:
-		if selected.Status != protocol.StatusRunning || selected.WorkerID == "" {
+		if selected.Status != protocol.StatusRunning || selected.Worker == "" {
 			result.err = fmt.Errorf("job is no longer running")
 			break
 		}
-		res, err := c.Exec(selected.WorkerID, "killall python", 30*time.Second)
+		res, err := c.Exec(selected.Worker, "killall python", 30*time.Second)
 		result.err = err
 		if err == nil && res.ExitCode != 0 {
 			result.err = fmt.Errorf("killall python exited with code %d", res.ExitCode)
 		}
 	case cancelAction:
-		result.err = c.Cancel(selected.JobID)
+		result.err = c.Cancel(selected.ID)
 	}
 	return result
 }
 
 func scriptLines(paths *protocol.Paths, jobID string) ([]string, error) {
-	f, err := os.Open(paths.JobScript(jobID))
+	data, err := client.New(paths.Base).JobScript(jobID)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 	const maxBytes = 1 << 20
-	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
-	if err != nil {
-		return nil, err
-	}
 	if len(data) > maxBytes {
 		return nil, fmt.Errorf("script exceeds 1 MiB preview limit")
 	}
@@ -96,7 +83,7 @@ func scriptLines(paths *protocol.Paths, jobID string) ([]string, error) {
 			return -1
 		}
 		return r
-	}, string(data))
+	}, data)
 	lexer := lexers.Get("bash")
 	tokens, err := lexer.Tokenise(nil, clean)
 	if err != nil {

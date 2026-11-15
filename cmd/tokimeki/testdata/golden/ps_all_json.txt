@@ -5,7 +5,6 @@
     "command": "echo garbage-start",
     "status": "completed",
     "submitted_at": "2026-01-05T09:00:00Z",
-    "started_at": "garbage",
     "finished_at": "2026-01-05T09:30:00Z"
   },
   {

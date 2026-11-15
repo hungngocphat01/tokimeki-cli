@@ -20,7 +20,6 @@ import (
 
 	"github.com/hungngocphat01/tokimeki/client"
 	"github.com/hungngocphat01/tokimeki/protocol"
-	"github.com/hungngocphat01/tokimeki/registry"
 	"github.com/hungngocphat01/tokimeki/runner"
 	"github.com/hungngocphat01/tokimeki/shell"
 	"github.com/hungngocphat01/tokimeki/shell/session"
@@ -158,14 +157,14 @@ func runnerCmd() *cobra.Command {
 			d := runner.NewDaemon(workerID, base)
 			d.SetMannerPeriod(mannerPeriod)
 			d.SetTTL(ttl)
-			d.SetCapacity(registry.WorkerCapacity{CPUs: capCPUs, MemMB: capMemMB})
+			d.SetCapacity(runner.Capacity{CPUs: capCPUs, MemMB: capMemMB})
 			if err := d.Register(); err != nil {
 				return fmt.Errorf("register: %w", err)
 			}
 
 			ttlLabel := "none"
 			if ttl > 0 {
-				ttlLabel = protocol.FormatTTL(ttl)
+				ttlLabel = display.TTL(ttl)
 			}
 			log.Printf("Runner %s started (poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), poll, mannerPeriod, ttlLabel, base)
 
@@ -204,11 +203,14 @@ func runnersCmd() *cobra.Command {
 		Use:   "runners",
 		Short: "List running runners",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := client.New(resolveBase())
-			if asJSON {
-				return c.WorkersJSON(showAll)
+			runners, err := client.New(resolveBase()).ListRunners(client.ListRunnersOpts{All: showAll})
+			if err != nil {
+				return err
 			}
-			return c.Workers(showAll)
+			if asJSON {
+				return writeJSON(runnersJSON(runners))
+			}
+			return printRunners(os.Stdout, runners)
 		},
 	}
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "show all runners including stopped")
@@ -235,10 +237,14 @@ func psCmd() *cobra.Command {
 				}
 				filterWorker = args[0]
 			}
-			if asJSON {
-				return c.PSJSON(filterWorker, filterName, showAll)
+			jobs, err := c.ListJobs(client.ListJobsOpts{All: showAll, Worker: filterWorker, Name: filterName})
+			if err != nil {
+				return err
 			}
-			return c.PS(filterWorker, filterName, showAll)
+			if asJSON {
+				return writeJSON(psJSON(jobs))
+			}
+			return printPS(os.Stdout, jobs)
 		},
 	}
 	cmd.Flags().BoolVarP(&showAll, "all", "a", false, "show all jobs including finished")
@@ -258,11 +264,19 @@ func lsCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			if err := c.PS("", filterName, false); err != nil {
+			jobs, err := c.ListJobs(client.ListJobsOpts{Name: filterName})
+			if err != nil {
+				return err
+			}
+			if err := printPS(os.Stdout, jobs); err != nil {
 				return err
 			}
 			fmt.Print("\n\n")
-			return c.Workers(false)
+			runners, err := c.ListRunners(client.ListRunnersOpts{})
+			if err != nil {
+				return err
+			}
+			return printRunners(os.Stdout, runners)
 		},
 	}
 	cmd.Flags().StringVar(&filterName, "name", "", "filter jobs by tag (case-insensitive substring)")
@@ -541,10 +555,9 @@ func submitLiveOne(c *client.Client, spec protocol.JobSpec, path string, timeout
 func runLiveJobs(c *client.Client, ids []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	reg := registry.New(protocol.NewPaths(resolveBase()))
 	failureCode := 0
 	for _, id := range ids {
-		code, err := streamLiveJob(ctx, c, reg, id)
+		code, err := streamLiveJob(ctx, c, id)
 		if errors.Is(err, context.Canceled) {
 			fmt.Println("\nLive stream stopped. Submitted jobs were not canceled.")
 			return nil
@@ -562,79 +575,47 @@ func runLiveJobs(c *client.Client, ids []string) error {
 	return nil
 }
 
-func streamLiveJob(ctx context.Context, c *client.Client, reg *registry.Registry, id string) (int, error) {
-	meta, err := waitForJobStart(ctx, reg, id)
-	if err != nil {
-		return 0, err
-	}
-	if meta.StartedAt != nil && meta.WorkerID != "" {
-		fmt.Printf("Job assigned to %s\n", meta.WorkerID)
-	}
-	fmt.Println("#### BEGIN JOB LOGS ####")
-	err = c.Logs(id, client.LogsOpts{
-		Follow: true, Output: os.Stdout, StderrOutput: os.Stderr,
-		Context: ctx, PollInterval: 250 * time.Millisecond,
+func streamLiveJob(ctx context.Context, c *client.Client, id string) (int, error) {
+	job, err := c.FollowJob(ctx, id, client.FollowOpts{
+		Stdout: os.Stdout, Stderr: os.Stderr, Poll: 250 * time.Millisecond,
+		OnStart: func(job client.Job) {
+			if job.StartedAtNs != 0 && job.Worker != "" {
+				fmt.Printf("Job assigned to %s\n", job.Worker)
+			}
+			fmt.Println("#### BEGIN JOB LOGS ####")
+		},
 	})
 	if err != nil {
 		return 0, err
 	}
 	fmt.Println("#### END JOB LOGS ####")
-	meta, err = reg.ReadJobMeta(id)
-	if err != nil {
-		return 0, err
-	}
-	message, code := liveSummary(meta, liveColorEnabled())
+	message, code := liveSummary(job, liveColorEnabled())
 	fmt.Println(message)
 	return code, nil
 }
 
-func waitForJobStart(ctx context.Context, reg *registry.Registry, id string) (*protocol.JobMeta, error) {
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		meta, err := reg.ReadJobMeta(id)
-		if err != nil {
-			return nil, err
-		}
-		if meta != nil && (meta.Status == protocol.StatusRunning || meta.FinishedAt != nil) {
-			return meta, nil
-		}
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
-func liveSummary(meta *protocol.JobMeta, color bool) (string, int) {
+// liveSummary is the closing line of live mode and the exit code to use. The
+// duration runs from start (or, if it never started, submission) to finish.
+func liveSummary(job client.Job, color bool) (string, int) {
 	code := 0
 	label := "Job finished successfully"
 	shade := "\x1b[32m"
-	if meta.Status != protocol.StatusCompleted {
+	if job.Status != protocol.StatusCompleted {
 		label, shade, code = "Job failed", "\x1b[31m", 1
-		if meta.ExitCode != nil && *meta.ExitCode != 0 {
-			code = *meta.ExitCode
+		if job.ExitCode != nil && *job.ExitCode != 0 {
+			code = *job.ExitCode
 		}
 	}
-	start, startErr := time.Parse(time.RFC3339, meta.SubmittedAt)
-	if meta.StartedAt != nil {
-		start, startErr = time.Parse(time.RFC3339, *meta.StartedAt)
+	start := job.StartedAtNs
+	if start == 0 {
+		start = job.SubmittedAtNs
 	}
-	if meta.FinishedAt != nil && startErr == nil {
-		if end, err := time.Parse(time.RFC3339, *meta.FinishedAt); err == nil {
-			seconds := int(end.Sub(start).Seconds())
-			if seconds < 0 {
-				seconds = 0
-			}
-			if seconds < 60 {
-				label += fmt.Sprintf(" in %ds", seconds)
-			} else {
-				label += fmt.Sprintf(" in %dm%ds", seconds/60, seconds%60)
-			}
+	if job.FinishedAtNs != 0 && start != 0 {
+		seconds := max(0, int(time.Duration(job.FinishedAtNs-start).Seconds()))
+		if seconds < 60 {
+			label += fmt.Sprintf(" in %ds", seconds)
+		} else {
+			label += fmt.Sprintf(" in %dm%ds", seconds/60, seconds%60)
 		}
 	}
 	if color {
@@ -1037,7 +1018,26 @@ func jobCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
-			return c.Job(args[0], asJSON)
+			meta, err := c.JobRecord(args[0])
+			if err != nil {
+				return err
+			}
+			data, err := json.MarshalIndent(meta, "", "  ")
+			if err != nil {
+				return fmt.Errorf("marshal meta: %w", err)
+			}
+			fmt.Println(string(data))
+			if asJSON {
+				return nil
+			}
+			if script, err := c.JobScript(args[0]); err == nil {
+				fmt.Println("\n--- script.sh ---")
+				fmt.Print(script)
+				if len(script) > 0 && script[len(script)-1] != '\n' {
+					fmt.Println()
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON only (omit script body)")
@@ -1060,8 +1060,13 @@ jobs and exit. For auto-refresh, pipe through watch(1):
 This is intentionally one-shot — watch(1) does double-buffered redraw without
 flicker, so we don't reimplement it here.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := client.New(resolveBase())
-			return c.Top(client.TopOpts{Plain: plain})
+			base := resolveBase()
+			d, err := loadTop(client.New(base), base)
+			if err != nil {
+				return err
+			}
+			printTop(os.Stdout, d, plain)
+			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&plain, "plain", false, "skip box borders and colors (auto on non-TTY)")
@@ -1078,11 +1083,7 @@ func eventsCmd() *cobra.Command {
 		Use:   "events",
 		Short: "Stream the shared event log (submit/start/finish/crash/...)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			opts := client.EventsOpts{
-				JobID:  jobID,
-				Follow: follow,
-				JSON:   asJSON,
-			}
+			opts := client.EventFilter{JobID: jobID}
 			if since != "" {
 				if d, err := time.ParseDuration(since); err == nil {
 					opts.Since = time.Now().Add(-d)
@@ -1093,7 +1094,19 @@ func eventsCmd() *cobra.Command {
 				}
 			}
 			c := client.New(resolveBase())
-			return c.Events(opts)
+			events, err := c.ListEvents(opts)
+			if err != nil {
+				return err
+			}
+			for _, ev := range events {
+				printEvent(ev, asJSON)
+			}
+			if !follow {
+				return nil
+			}
+			return c.FollowEvents(context.Background(), opts, 500*time.Millisecond, func(ev client.Event) {
+				printEvent(ev, asJSON)
+			})
 		},
 	}
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "follow new events")
@@ -1167,12 +1180,15 @@ the GPU columns show "n/a". CPU% can exceed 100% on multi-threaded jobs
 (it's the sum across cores, like ` + "`top`" + ` in irix mode).`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			c := client.New(resolveBase())
+			samples, err := client.New(resolveBase()).ListStats()
+			if err != nil {
+				return err
+			}
 			if asJSON {
-				return c.StatsJSON()
+				return writeJSON(statsJSONRows(samples))
 			}
 			fmt.Println("TOKIMEKI JOB SYSTEM")
-			return c.Stats()
+			return printStats(os.Stdout, samples)
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON for machine consumers")
@@ -1246,4 +1262,43 @@ func printGCReport(rep client.GCReport) {
 	} else {
 		fmt.Printf("GC complete: %d items removed\n", len(rep.Removed))
 	}
+}
+
+// printEvent prints one event as "<ts> <kind> key=value..." or, with
+// asJSON, as one NDJSON line.
+func printEvent(ev client.Event, asJSON bool) {
+	if asJSON {
+		data, _ := json.Marshal(eventJSON{
+			TS: display.RFC3339Nano(ev.TSNs), Kind: ev.Kind, JobID: ev.JobID, WorkerID: ev.WorkerID,
+			ExitCode: ev.ExitCode, Status: ev.Status, Fields: ev.Fields,
+		})
+		fmt.Println(string(data))
+		return
+	}
+	tail := ""
+	if ev.WorkerID != "" {
+		tail += " worker=" + ev.WorkerID
+	}
+	if ev.JobID != "" {
+		tail += " job=" + ev.JobID
+	}
+	if ev.ExitCode != nil {
+		tail += fmt.Sprintf(" exit=%d", *ev.ExitCode)
+	}
+	if ev.Status != "" {
+		tail += " status=" + ev.Status
+	}
+	fmt.Printf("%s %s%s\n", display.RFC3339Nano(ev.TSNs), ev.Kind, tail)
+}
+
+// eventJSON is the pre-engine-schema `events --json` shape.
+// TODO(task 9): replace with client.Event.
+type eventJSON struct {
+	TS       string            `json:"ts"`
+	Kind     string            `json:"kind"`
+	JobID    string            `json:"job_id,omitempty"`
+	WorkerID string            `json:"worker_id,omitempty"`
+	ExitCode *int              `json:"exit_code,omitempty"`
+	Status   string            `json:"status,omitempty"`
+	Fields   map[string]string `json:"fields,omitempty"`
 }

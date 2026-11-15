@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hungngocphat01/tokimeki/client"
 	"github.com/hungngocphat01/tokimeki/protocol"
 	"github.com/hungngocphat01/tokimeki/shell/session"
 )
@@ -89,17 +90,22 @@ func TestKPDispatchesKillallPythonToNamedRunner(t *testing.T) {
 }
 
 func TestLiveSummary(t *testing.T) {
-	started, finished := "2026-01-01T00:00:00Z", "2026-01-01T01:01:30Z"
-	meta := &protocol.JobMeta{Status: protocol.StatusCompleted, StartedAt: &started, FinishedAt: &finished}
-	message, code := liveSummary(meta, false)
+	started := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	job := client.Job{Status: protocol.StatusCompleted, SubmittedAtNs: started.Add(-time.Hour).UnixNano(),
+		StartedAtNs: started.UnixNano(), FinishedAtNs: started.Add(61*time.Minute + 30*time.Second).UnixNano()}
+	message, code := liveSummary(job, false)
 	if message != "Job finished successfully in 61m30s" || code != 0 {
 		t.Fatalf("success: %q, %d", message, code)
 	}
 	failedCode := 7
-	meta.Status, meta.ExitCode = protocol.StatusFailed, &failedCode
-	message, code = liveSummary(meta, true)
+	job.Status, job.ExitCode = protocol.StatusFailed, &failedCode
+	message, code = liveSummary(job, true)
 	if message != "\x1b[31mJob failed in 61m30s\x1b[0m" || code != 7 {
 		t.Fatalf("failure: %q, %d", message, code)
+	}
+	job.StartedAtNs = 0 // never started: measured from submission
+	if message, _ = liveSummary(job, false); message != "Job failed in 121m30s" {
+		t.Fatalf("unstarted: %q", message)
 	}
 }
 

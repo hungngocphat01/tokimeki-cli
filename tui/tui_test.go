@@ -12,9 +12,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/client"
 	"github.com/hungngocphat01/tokimeki/protocol"
-	"github.com/hungngocphat01/tokimeki/registry"
 )
 
 func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
@@ -40,7 +39,7 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeJSON(paths.WorkerStats("node1"), stats{JobID: "running1", CPUPercent: 143, RSSBytes: 2 << 30, SampledAt: time.Now().UTC().Format(time.RFC3339)})
+	writeJSON(paths.WorkerStats("node1"), statsFile{WorkerID: "node1", JobID: "running1", CPUPercent: 143, RSSBytes: 2 << 30, SampledAt: time.Now().UTC().Format(time.RFC3339)})
 	if err := os.WriteFile(paths.JobStdout("running1"), []byte("first\nsecond\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -53,16 +52,16 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 		t.Fatalf("runner stats snapshot = %+v", state.workers)
 	}
 	jobs := orderJobs(state.jobs, false)
-	if len(jobs) != 2 || jobs[0].JobID != "running1" || jobs[1].JobID != "queued01" {
+	if len(jobs) != 2 || jobs[0].ID != "running1" || jobs[1].ID != "queued01" {
 		t.Fatalf("active jobs = %+v", jobs)
 	}
 	history := orderJobs(state.jobs, true)
-	if len(history) != 3 || history[0].JobID != "running1" || history[1].JobID != "queued01" || history[2].JobID != "finished" {
+	if len(history) != 3 || history[0].ID != "running1" || history[1].ID != "queued01" || history[2].ID != "finished" {
 		t.Fatalf("ps -a order = %+v", history)
 	}
 	initial := model{paths: paths}
 	initial.applySnapshot(state)
-	if initial.history[initial.selected[historyFeature]].JobID != "finished" {
+	if initial.history[initial.selected[historyFeature]].ID != "finished" {
 		t.Fatalf("history did not open at newest submission: selected=%d", initial.selected[historyFeature])
 	}
 	m := model{paths: paths, jobs: jobs}
@@ -71,11 +70,11 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 		t.Fatalf("selected telemetry = %+v", m.jobs[0])
 	}
 	// A runner may have moved on to another job or stopped sampling.
-	writeJSON(paths.WorkerStats("node1"), stats{JobID: "otherjob", SampledAt: time.Now().UTC().Format(time.RFC3339)})
+	writeJSON(paths.WorkerStats("node1"), statsFile{WorkerID: "node1", JobID: "otherjob", SampledAt: time.Now().UTC().Format(time.RFC3339)})
 	if got := loadStats(paths, jobs[0]); got != nil {
 		t.Fatalf("accepted another job's stats: %+v", got)
 	}
-	writeJSON(paths.WorkerStats("node1"), stats{JobID: "running1", SampledAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)})
+	writeJSON(paths.WorkerStats("node1"), statsFile{WorkerID: "node1", JobID: "running1", SampledAt: time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)})
 	if got := loadStats(paths, jobs[0]); got != nil {
 		t.Fatalf("accepted stale stats: %+v", got)
 	}
@@ -89,35 +88,38 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	if len(stale.workers) != 0 {
 		t.Fatalf("TUI runners included stopped runner: %+v", stale.workers)
 	}
-	if got := orderJobs(stale.jobs, false); len(got) != 1 || got[0].JobID != "queued01" {
+	if got := orderJobs(stale.jobs, false); len(got) != 1 || got[0].ID != "queued01" {
 		t.Fatalf("ps view with stopped runner = %+v", got)
 	}
-	if got := orderJobs(stale.jobs, true); len(got) != 3 || got[0].effectiveStatus != "stopped" {
+	if got := orderJobs(stale.jobs, true); len(got) != 3 || got[0].EffectiveStatus != "stopped" {
 		t.Fatalf("ps -a view with stopped runner = %+v", got)
 	}
 }
 
 func TestHistorySortsBySubmittedTimeAcrossStatusesAndPriorities(t *testing.T) {
-	started := "2026-01-03T00:00:00Z"
+	// History keeps the engine's submission order and includes every status.
 	all := []job{
-		{JobMeta: protocol.JobMeta{JobID: "latest", Status: protocol.StatusCompleted, SubmittedAt: "2026-01-03T00:00:00Z"}, effectiveStatus: protocol.StatusCompleted},
-		{JobMeta: protocol.JobMeta{JobID: "middle", Status: protocol.StatusRunning, SubmittedAt: "2026-01-02T00:00:00Z", StartedAt: &started}, effectiveStatus: protocol.StatusRunning},
-		{JobMeta: protocol.JobMeta{JobID: "earliest", Status: protocol.StatusQueued, SubmittedAt: "2026-01-01T00:00:00Z", Priority: 99}, effectiveStatus: protocol.StatusQueued},
+		{Job: client.Job{ID: "earliest", Status: protocol.StatusQueued, Priority: 99, EffectiveStatus: protocol.StatusQueued}},
+		{Job: client.Job{ID: "middle", Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}},
+		{Job: client.Job{ID: "latest", Status: protocol.StatusCompleted, EffectiveStatus: protocol.StatusCompleted}},
 	}
 	got := orderJobs(all, true)
 	for i, id := range []string{"earliest", "middle", "latest"} {
-		if got[i].JobID != id {
+		if got[i].ID != id {
 			t.Fatalf("history order = %+v", got)
 		}
+	}
+	if active := orderJobs(all, false); len(active) != 2 || active[0].ID != "middle" || active[1].ID != "earliest" {
+		t.Fatalf("active order = %+v", active)
 	}
 }
 
 func TestJobsDetailsShowSubmittedAndElapsedTime(t *testing.T) {
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
-	submitted := now.Add(-2 * time.Hour).Format(time.RFC3339)
-	started := now.Add(-time.Hour - 2*time.Minute - 3*time.Second).Format(time.RFC3339)
-	queued := job{JobMeta: protocol.JobMeta{JobID: "queued", SubmittedAt: submitted}, effectiveStatus: protocol.StatusQueued}
-	running := job{JobMeta: protocol.JobMeta{JobID: "running", SubmittedAt: submitted, StartedAt: &started}, effectiveStatus: protocol.StatusRunning}
+	submitted := now.Add(-2 * time.Hour).UnixNano()
+	started := now.Add(-time.Hour - 2*time.Minute - 3*time.Second).UnixNano()
+	queued := job{Job: client.Job{ID: "queued", SubmittedAtNs: submitted, EffectiveStatus: protocol.StatusQueued}}
+	running := job{Job: client.Job{ID: "running", SubmittedAtNs: submitted, StartedAtNs: started, EffectiveStatus: protocol.StatusRunning}}
 	for _, tc := range []struct {
 		item job
 		want string
@@ -153,7 +155,7 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 	if err := os.MkdirAll(paths.SharedDir(), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	valid, _ := json.Marshal(eventlog.Event{TS: time.Now().UTC().Format(time.RFC3339Nano), Kind: eventlog.KindRunnerStart, WorkerID: "node1"})
+	valid, _ := json.Marshal(map[string]string{"ts": time.Now().UTC().Format(time.RFC3339Nano), "kind": client.EventRunnerStart, "worker_id": "node1"})
 	if err := os.WriteFile(paths.EventsLog(), append([]byte("malformed\n"), append(valid, '\n')...), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +163,7 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.workers) != 1 || state.workers[0].status != "running" || len(state.events) != 1 {
+	if len(state.workers) != 1 || !state.workers[0].Alive || len(state.events) != 1 {
 		t.Fatalf("runner/activity snapshot = %+v", state)
 	}
 	m := model{paths: paths, width: 100, height: 30}
@@ -180,8 +182,8 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 
 func TestRunnerDetailListShowsOnlyNames(t *testing.T) {
 	m := model{feature: runnersFeature, workers: []worker{
-		{info: protocol.WorkerInfo{WorkerID: "idle", Hostname: "gpu01"}, status: "running"},
-		{info: protocol.WorkerInfo{WorkerID: "busy", Hostname: "gpu02"}, status: "running", current: &protocol.JobInfo{JobID: "job1"}},
+		{Runner: client.Runner{ID: "idle", HasInfo: true, Hostname: "gpu01", Alive: true}},
+		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true, Current: &client.CurrentJob{JobID: "job1"}}},
 	}}
 	for i, want := range []struct{ label, status string }{
 		{"idle", "idle"},
@@ -198,11 +200,11 @@ func TestRunnerDetailListShowsOnlyNames(t *testing.T) {
 }
 
 func TestRunnerViewsShowTTLAndRemaining(t *testing.T) {
-	started := time.Now().Add(-3*time.Hour - 30*time.Minute).UTC().Format(time.RFC3339)
-	m := model{feature: runnersFeature, workers: []worker{{
-		info:   protocol.WorkerInfo{WorkerID: "timed", Hostname: "gpu01", StartedAt: started, TTLHours: 50},
-		status: "running",
-	}}}
+	remaining := (46*time.Hour + 30*time.Minute).Seconds()
+	m := model{feature: runnersFeature, workers: []worker{{Runner: client.Runner{
+		ID: "timed", HasInfo: true, Hostname: "gpu01", Alive: true,
+		StartedAtNs: time.Now().Add(-3*time.Hour - 30*time.Minute).UnixNano(), TTLSecs: 50 * 3600, RemainingSecs: &remaining,
+	}}}}
 	label, _ := m.itemLabel(0)
 	detail := m.renderRunnerDetail(70, 20)
 	if label != "timed" || !strings.Contains(detail, "TTL: 2d 2h") || !strings.Contains(detail, "Remaining: 1d 23h") {
@@ -215,8 +217,9 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 30,
 		feature: runnersFeature, focus: 1,
 		workers: []worker{
-			{info: protocol.WorkerInfo{WorkerID: "gpu-a", Hostname: "node-a"}, status: "running", current: &protocol.JobInfo{JobID: "job1", PID: 123}, stats: &stats{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUUtil: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAt: time.Now().UTC().Format(time.RFC3339)}},
-			{info: protocol.WorkerInfo{WorkerID: "gpu-b", Hostname: "node-b"}, status: "running"},
+			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true, Current: &client.CurrentJob{JobID: "job1", PID: 123}},
+				stats: &client.StatsSample{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUAvailable: true, GPUUtilPercent: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAtNs: time.Now().UnixNano()}},
+			{Runner: client.Runner{ID: "gpu-b", HasInfo: true, Hostname: "node-b", Alive: true}},
 		},
 	}
 	next, _ := m.Update(tea.KeyPressMsg{Code: 't'})
@@ -245,8 +248,8 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 func TestActivityShowsSubmittedScriptName(t *testing.T) {
 	m := model{
 		feature: activityFeature,
-		history: []job{{JobMeta: protocol.JobMeta{JobID: "job12345", Command: "/work/train_model.sh"}}},
-		events:  []eventlog.Event{{Kind: eventlog.KindStart, JobID: "job12345", TS: "2026-10-26T12:00:00Z"}},
+		history: []job{{Job: client.Job{ID: "job12345", Command: "/work/train_model.sh"}}},
+		events:  []client.Event{{Kind: client.EventStart, JobID: "job12345", TSNs: time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC).UnixNano()}},
 	}
 	label, _ := m.itemLabel(0)
 	if !strings.Contains(label, "job12345  train_model.sh") {
@@ -276,8 +279,8 @@ func TestNavigationKeepsJobSelectionAcrossRefresh(t *testing.T) {
 	paths := protocol.NewPaths(t.TempDir())
 	m := model{paths: paths}
 	m.applySnapshot(snapshot{jobs: []job{
-		{JobMeta: protocol.JobMeta{JobID: "a", Status: protocol.StatusRunning}, effectiveStatus: protocol.StatusRunning},
-		{JobMeta: protocol.JobMeta{JobID: "b", Status: protocol.StatusRunning}, effectiveStatus: protocol.StatusRunning},
+		{Job: client.Job{ID: "a", Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}},
+		{Job: client.Job{ID: "b", Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}},
 	}})
 	press := func(code rune) {
 		t.Helper()
@@ -286,7 +289,7 @@ func TestNavigationKeepsJobSelectionAcrossRefresh(t *testing.T) {
 	}
 	press(tea.KeyRight)
 	press(tea.KeyDown)
-	if m.focus != 1 || m.jobs[m.selected[jobsFeature]].JobID != "b" {
+	if m.focus != 1 || m.jobs[m.selected[jobsFeature]].ID != "b" {
 		t.Fatalf("focus=%d selected=%d", m.focus, m.selected[jobsFeature])
 	}
 	press('v')
@@ -295,10 +298,10 @@ func TestNavigationKeepsJobSelectionAcrossRefresh(t *testing.T) {
 	}
 	press(tea.KeyLeft)
 	m.applySnapshot(snapshot{jobs: []job{
-		{JobMeta: protocol.JobMeta{JobID: "b", Status: protocol.StatusRunning}, effectiveStatus: protocol.StatusRunning},
-		{JobMeta: protocol.JobMeta{JobID: "c", Status: protocol.StatusQueued}, effectiveStatus: protocol.StatusQueued},
+		{Job: client.Job{ID: "b", Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}},
+		{Job: client.Job{ID: "c", Status: protocol.StatusQueued, EffectiveStatus: protocol.StatusQueued}},
 	}})
-	if m.selected[jobsFeature] != 0 || m.jobs[m.selected[jobsFeature]].JobID != "b" {
+	if m.selected[jobsFeature] != 0 || m.jobs[m.selected[jobsFeature]].ID != "b" {
 		t.Fatalf("selection lost after refresh: %+v", m)
 	}
 	press(tea.KeyRight)
@@ -316,10 +319,10 @@ func TestPaneFitsTerminal(t *testing.T) {
 	for _, size := range [][2]int{{100, 30}, {82, 16}} {
 		for feature := feature(0); feature < featureCount; feature++ {
 			m := model{paths: protocol.NewPaths("/tmp/tokimeki"), width: size[0], height: size[1], feature: feature}
-			m.jobs = []job{{JobMeta: protocol.JobMeta{JobID: "running1", Status: protocol.StatusRunning}, effectiveStatus: protocol.StatusRunning}}
-			m.history = []job{{JobMeta: protocol.JobMeta{JobID: "finished", Status: protocol.StatusCompleted}, effectiveStatus: protocol.StatusCompleted}}
-			m.workers = []worker{{info: protocol.WorkerInfo{WorkerID: "node1", Hostname: "gpu01"}, status: "running"}}
-			m.events = []eventlog.Event{{Kind: eventlog.KindStart, JobID: "running1"}}
+			m.jobs = []job{{Job: client.Job{ID: "running1", Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}}}
+			m.history = []job{{Job: client.Job{ID: "finished", Status: protocol.StatusCompleted, EffectiveStatus: protocol.StatusCompleted}}}
+			m.workers = []worker{{Runner: client.Runner{ID: "node1", HasInfo: true, Hostname: "gpu01", Alive: true}}}
+			m.events = []client.Event{{Kind: client.EventStart, JobID: "running1"}}
 			view := m.View().Content
 			lines := strings.Split(view, "\n")
 			if len(lines) > size[1] {
@@ -354,7 +357,7 @@ func TestStatusColorsAndLowerPaneScrolling(t *testing.T) {
 		t.Fatalf("running=%q queued=%q", runningColor, queuedColor)
 	}
 	m := model{paths: paths, feature: jobsFeature, focus: 2, detailSection: 1, width: 82, height: 16}
-	m.jobs = []job{{JobMeta: protocol.JobMeta{JobID: "queued01", Status: protocol.StatusQueued, DependsOn: []string{"a", "b", "c", "d", "e"}}, effectiveStatus: protocol.StatusQueued}}
+	m.jobs = []job{{Job: client.Job{ID: "queued01", Status: protocol.StatusQueued, DependsOn: []string{"a", "b", "c", "d", "e"}, EffectiveStatus: protocol.StatusQueued}}}
 	before := ansi.Strip(m.View().Content)
 	m.move(1)
 	after := ansi.Strip(m.View().Content)
@@ -365,11 +368,12 @@ func TestStatusColorsAndLowerPaneScrolling(t *testing.T) {
 
 func TestJobActionsAndContextHelp(t *testing.T) {
 	paths := protocol.NewPaths(t.TempDir())
-	queuedID, _, err := registry.New(paths).CreateQueuedJob("", "#!/bin/bash\necho hello\n", "echo hello")
+	res, err := client.New(paths.Base).Submit(protocol.JobSpec{Script: "#!/bin/bash\necho hello\n", Command: "echo hello"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := model{paths: paths, focus: 1, jobs: []job{{JobMeta: protocol.JobMeta{JobID: queuedID, Status: protocol.StatusQueued}, effectiveStatus: protocol.StatusQueued}}}
+	queuedID := res.JobID
+	m := model{paths: paths, focus: 1, jobs: []job{{Job: client.Job{ID: queuedID, Status: protocol.StatusQueued, EffectiveStatus: protocol.StatusQueued}}}}
 	press := func(code rune) tea.Cmd {
 		t.Helper()
 		next, cmd := m.Update(tea.KeyPressMsg{Code: code})
@@ -385,7 +389,7 @@ func TestJobActionsAndContextHelp(t *testing.T) {
 	}
 	press('s')
 	press('c')
-	if m.confirm == nil || m.confirm.kind != cancelAction || m.confirm.job.JobID != queuedID {
+	if m.confirm == nil || m.confirm.kind != cancelAction || m.confirm.job.ID != queuedID {
 		t.Fatalf("cancel confirmation = %+v", m.confirm)
 	}
 	cmd := press('y')
@@ -416,19 +420,18 @@ func TestRunningActionsUseRunnerRequests(t *testing.T) {
 
 func testRunningAction(t *testing.T, kind action, typeName, command string, signal int) {
 	paths := protocol.NewPaths(t.TempDir())
-	selected := job{JobMeta: protocol.JobMeta{JobID: "job12345", WorkerID: "node1", Status: protocol.StatusRunning}}
-	selected.effectiveStatus = protocol.StatusRunning
+	selected := job{Job: client.Job{ID: "job12345", Worker: "node1", Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}}
 	m := model{paths: paths, focus: 1, jobs: []job{selected}}
 	if !strings.Contains(m.statusLine(), "k kill") || !strings.Contains(m.statusLine(), "p killall python") {
 		t.Fatalf("running help = %q", m.statusLine())
 	}
-	for _, dir := range []string{paths.JobDir(selected.JobID), paths.WorkerInbox("node1"), paths.WorkerOutbox("node1"), paths.TmpDir()} {
+	for _, dir := range []string{paths.JobDir(selected.ID), paths.WorkerInbox("node1"), paths.WorkerOutbox("node1"), paths.TmpDir()} {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	meta, _ := json.Marshal(selected.JobMeta)
-	if err := os.WriteFile(paths.JobMeta(selected.JobID), meta, 0o644); err != nil {
+	meta, _ := json.Marshal(protocol.JobMeta{JobID: selected.ID, WorkerID: selected.Worker, Status: selected.Status})
+	if err := os.WriteFile(paths.JobMeta(selected.ID), meta, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	request := make(chan protocol.Request, 1)
@@ -467,7 +470,7 @@ func testRunningAction(t *testing.T, kind action, typeName, command string, sign
 
 func TestShellKeyOnlyOpensFromSelectedRunner(t *testing.T) {
 	m := model{paths: protocol.NewPaths("/tmp/tokimeki"), feature: runnersFeature, workers: []worker{
-		{info: protocol.WorkerInfo{WorkerID: "gpu01"}, status: "running"},
+		{Runner: client.Runner{ID: "gpu01", HasInfo: true, Alive: true}},
 	}}
 	if m.openShell() != nil {
 		t.Fatal("shell opened with the features pane focused")
@@ -497,4 +500,13 @@ func TestShellNoticeReportsOnlyConnectionFailures(t *testing.T) {
 	if got != "shell on gpu01: timed out" {
 		t.Errorf("notice = %q", got)
 	}
+}
+
+// statsFile is the on-disk shape of workers/<id>/stats.json for fixtures.
+type statsFile struct {
+	WorkerID   string  `json:"worker_id"`
+	JobID      string  `json:"job_id"`
+	CPUPercent float64 `json:"cpu_percent"`
+	RSSBytes   int64   `json:"rss_bytes"`
+	SampledAt  string  `json:"sampled_at"`
 }
