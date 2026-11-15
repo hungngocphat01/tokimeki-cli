@@ -77,13 +77,14 @@ The engine API must be generic enough for further front-ends.
 4. Ordering: land the version-coupling work first (push engine `b39295a`,
    tag `v0.1.0`, `make bump-engine V=v0.1.0`, commit CLI)?
 
-## Pending from earlier work (2026-11-15)
+## Status (2026-11-15)
 
-- Engine commit `b39295a` (build-info version) is local, not pushed; no tags
-  exist yet.
-- CLI changes uncommitted: submodule removal, module-path imports,
-  version/check-engine/bump-engine, `docs/BUILD.md`, `AGENTS.md`.
-- Engine `AGENTS.md` uncommitted.
+- Phase 1 (Go refactor: engine core returns typed data, CLI shim, `--json`
+  engine schema) is done on `refactor/engine-core` in both repos.
+- Python front-end remains deferred; open questions 1 (binding a vs b) and 3
+  (scope) above still stand.
+- Release steps (push engine `main`, tag `v0.1.0`/`v0.2.0`, `make
+  bump-engine`) await the user's go-ahead.
 - Engine smoke harness still builds `./cmd/tokimeki`, which only exists in
   the CLI repo; use `--binary` until fixed.
 
@@ -92,3 +93,7 @@ The engine API must be generic enough for further front-ends.
 - 2026-11-15 — Scoped phase 1; understanding confirmed with user; memo created.
 - 2026-11-15 — Rescoped: phase 1 is the Go refactor only, preserving behavior; Python deferred.
   Machine output = `--json` on regular commands (no `api` command). Plan written.
+- 2026-11-15 — Phase 1 implemented: engine `client` returns typed results (ns/secs/bytes, coded errors) and
+  never prints; CLI renders from them (goldens unchanged except documented diffs); `--json` emits the
+  engine schema everywhere. Verified side by side with the pre-refactor binary locally and on a two-node
+  Docker setup (scheduling, targeting, exec, cross-node kill, TLS shell).
