@@ -1,0 +1,90 @@
+# AGENTS.md — tokimeki CLI
+
+The `tokimeki` (alias `tok`) binary: cobra commands and a Bubble Tea TUI on
+top of the Tokimeki engine. All job-runner logic — queueing, runner daemon,
+filesystem protocol, shell sessions — lives in the **separate engine repo**;
+this repo is the user-facing layer. Read `README.md` for what Tokimeki is,
+`docs/USAGE.md` for command behavior, `docs/BUILD.md` for builds and
+versioning.
+
+- Module: `github.com/ngocphat/tokimeki-cli`
+- Engine dependency: `github.com/hungngocphat01/tokimeki`, a regular Go module
+  pinned in `go.mod` (no submodule, no `replace`). The repo is private:
+
+  ```bash
+  go env -w GOPRIVATE='github.com/hungngocphat01/*'
+  git config --global url."git@github.com:".insteadOf "https://github.com/"
+  ```
+
+## Layout
+
+| Path | Responsibility |
+|---|---|
+| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`); thin wrappers over engine `client`/`runner` |
+| `cmd/tokimeki/version.go` | `tokimeki version`: CLI version (ldflags), engine version (`version.Engine()`), commit, branch, build time |
+| `tui/` | `tok tui` dashboard: `tui.go` model/update, `view.go` rendering, `data.go` loading from the engine, `actions.go` kill/cancel/shell actions |
+| `scripts/check-engine.sh` | Release guard for the engine pin (see Versioning) |
+| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning) |
+| `docs/memos/` | Working memos / scratchpad for in-flight design work (`YYYY-MM-DD-topic.md`); check here for current plans and open questions |
+| `RELEASE_NOTES.txt` | User-facing notes mailed with binary drops |
+
+Behavior changes to queueing, runners, on-disk state, or the protocol belong
+in the engine repo, not here. If a CLI feature needs new engine behavior,
+make the engine change first (see "Working alongside the engine").
+
+## Commands
+
+```bash
+make                 # dev build → ./tokimeki (no version stamp, honors go.work)
+make fast            # dev build with version stamp
+go vet ./... && go test ./...
+
+make check-engine    # verify go.mod pins a tagged engine release
+make release         # host-arch stripped build (runs check-engine, GOWORK=off)
+make linux-amd64     # cluster build; also linux-arm64, darwin-arm64, cross
+make bump-engine V=vX.Y.Z   # adopt a new engine release
+```
+
+`CGO_ENABLED=0` is exported by the Makefile; binaries are static.
+
+## Versioning
+
+CLI and engine are versioned independently with semver tags. **Each CLI commit
+pins exactly one engine release in `go.mod`** — that pin is the CLI version's
+engine requirement, and it only changes via `make bump-engine`.
+
+- CLI-only change: tag the CLI; engine pin untouched.
+- Engine-only change: the engine gets tagged; nothing changes here until bumped.
+- Usual flow: engine tag → `make bump-engine V=vX.Y.Z` → commit → CLI tag.
+
+Release targets (`release`, `install`, `linux-*`, `darwin-*`) run
+`scripts/check-engine.sh` and build with `GOWORK=off`. The check fails if the
+engine requirement is a pseudo-version or is `replace`d. Don't weaken it to
+make a build pass — tag the engine instead. `tokimeki version` showing
+`engine: (devel)` or `... => <path>` means the binary was built against a
+local engine checkout and must not be shipped.
+
+## Working alongside the engine
+
+For changes spanning both repos, use an **uncommitted** `go.work` in a parent
+directory:
+
+```bash
+cd .. && go work init ./tokimeki-cli ./tokimeki-engine
+```
+
+`make`/`make fast`/`go test` pick it up; release targets ignore it. Never
+commit a `go.work` or add a `replace` to `go.mod`. Ship by tagging the engine
+and bumping the pin.
+
+## Conventions
+
+- Keep `docs/USAGE.md` (and the README CLI reference) in sync when adding or
+  changing commands, flags, or TUI keys.
+- Human output is colorized only on a TTY and respects `NO_COLOR`; `--json`
+  output keeps RFC3339 UTC timestamps, tables use local time (`TZ`).
+- Run `gofmt` on files you touch.
+- Build artifacts (`tokimeki-linux-*`, tarballs) are not tracked; don't commit
+  them.
+- Commits: conventional-style subjects (`feat:`, `fix:`, `docs:`, `chore:`).
+  Commit or push only when asked.
