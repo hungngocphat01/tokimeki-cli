@@ -1,0 +1,10 @@
+TOKIMEKI JOB SYSTEM
+RUNNER  HOST   JOB       PID   CPU%  RSS   GPU%  GPU_MEM      PROCS  AGE
+w-gpu   gpu01  a0000002  999   250   2.0G  85%   14.8G/40.0G  3      <masked>
+w-old   old01  a0000003  1234  30    1M    n/a   n/a          1      <masked>
+
+--stderr--
+note: nvidia-smi not found
+
+--err--
+<nil>

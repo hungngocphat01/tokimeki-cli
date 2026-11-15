@@ -1,0 +1,13 @@
+{
+  "job_id": "a0000003",
+  "worker_id": "w-old",
+  "command": "sleep 1000",
+  "status": "killed",
+  "submitted_at": "2026-01-05T10:20:00Z",
+  "started_at": "2026-01-05T10:21:00Z",
+  "finished_at": "2026-01-05T12:00:00Z",
+  "exit_code": 143,
+  "depends_on": [
+    "a0000001"
+  ]
+}

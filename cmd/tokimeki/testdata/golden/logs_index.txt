@@ -1,0 +1,7 @@
+eval start
+Traceback: boom
+
+--stderr--
+
+--err--
+<nil>

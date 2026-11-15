@@ -1,0 +1,12 @@
+JOB_ID    RUNNER  PID  PRIO  NAME    COMMAND    STARTED  ELAPSED  STATUS
+a0000007  w-gpu   -    2     TrainB  bash z.sh  -        -        ◌ queued
+a0000006  -       -    0     -       echo hi    -        -        ◌ queued
+
+
+No workers found.
+Hint: start one with `tok runner --id <name>`.
+
+--stderr--
+
+--err--
+<nil>

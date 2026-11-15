@@ -1,0 +1,12 @@
+epoch 0 loss 1.000
+epoch 1 loss 0.500
+epoch 2 loss 0.333
+epoch 3 loss 0.250
+epoch 4 loss 0.200
+warning: slow io
+warning: retrying
+
+--stderr--
+
+--err--
+<nil>

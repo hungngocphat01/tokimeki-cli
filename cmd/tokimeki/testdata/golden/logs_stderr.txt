@@ -1,0 +1,7 @@
+warning: slow io
+warning: retrying
+
+--stderr--
+
+--err--
+<nil>

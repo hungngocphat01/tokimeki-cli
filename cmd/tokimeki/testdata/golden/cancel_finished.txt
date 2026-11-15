@@ -1,0 +1,15 @@
+
+--stderr--
+Error: registry.CancelQueuedJob: job a0000001 is completed (must be queued)
+Usage:
+  tok cancel <job_id> [flags]
+
+Flags:
+  -h, --help   help for cancel
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+
+
+--err--
+registry.CancelQueuedJob: job a0000001 is completed (must be queued)

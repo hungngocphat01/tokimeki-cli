@@ -1,0 +1,11 @@
+{
+  "job_id": "a0000006",
+  "worker_id": "",
+  "command": "echo hi",
+  "status": "queued",
+  "submitted_at": "2026-01-05T12:00:00Z",
+  "started_at": null,
+  "finished_at": null,
+  "exit_code": null,
+  "attempts": 1
+}

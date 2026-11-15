@@ -1,0 +1,14 @@
+2026-01-05T10:00:00.123456789Z submit job=a0000001
+2026-01-05T10:00:05.5Z start worker=w-gpu job=a0000001
+2026-01-05T10:10:00Z submit job=a0000002
+2026-01-05T11:23:45.000000001Z finish worker=w-gpu job=a0000001 exit=0 status=completed
+2026-01-05T11:24:00Z start worker=w-gpu job=a0000002
+2026-01-05T11:30:00Z finish worker=w-gpu job=a0000002 exit=3 status=failed
+2026-01-05T12:00:00Z killed worker=w-old job=a0000003 exit=143 status=killed
+2026-01-05T12:00:01Z cancel job=a0000009
+2026-01-05T12:01:00Z runner_exit worker=w-old
+
+--stderr--
+
+--err--
+<nil>

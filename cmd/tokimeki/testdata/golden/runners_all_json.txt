@@ -1,0 +1,22 @@
+[
+  {
+    "worker_id": "w-gpu",
+    "hostname": "gpu01",
+    "pid": 4242,
+    "started_at": "2026-01-04T00:00:00Z",
+    "ttl_hours": 167,
+    "status": "stopped"
+  },
+  {
+    "worker_id": "w-old",
+    "hostname": "old01",
+    "pid": 77,
+    "started_at": "2026-01-01T08:00:00Z",
+    "status": "stopped"
+  }
+]
+
+--stderr--
+
+--err--
+<nil>

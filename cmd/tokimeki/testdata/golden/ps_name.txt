@@ -1,0 +1,8 @@
+JOB_ID    RUNNER  PID  PRIO  NAME    COMMAND      STARTED              ELAPSED  STATUS
+a0000001  w-gpu   -    0     train   bash run.sh  2026-01-05 10:00:05  1h23m    ✓ completed
+a0000007  w-gpu   -    2     TrainB  bash z.sh    -                    -        ◌ queued
+
+--stderr--
+
+--err--
+<nil>

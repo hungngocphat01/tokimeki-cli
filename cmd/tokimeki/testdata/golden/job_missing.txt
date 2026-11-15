@@ -1,0 +1,16 @@
+
+--stderr--
+Error: job nope not found
+Usage:
+  tok job <job_id> [flags]
+
+Flags:
+  -h, --help   help for job
+      --json   emit JSON only (omit script body)
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+
+
+--err--
+job nope not found

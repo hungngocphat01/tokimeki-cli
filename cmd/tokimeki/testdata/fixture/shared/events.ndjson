@@ -1,0 +1,10 @@
+{"ts":"2026-01-05T10:00:00.123456789Z","kind":"submit","job_id":"a0000001"}
+{"ts":"2026-01-05T10:00:05.5Z","kind":"start","job_id":"a0000001","worker_id":"w-gpu"}
+{"ts":"2026-01-05T10:10:00Z","kind":"submit","job_id":"a0000002"}
+this line is not json
+{"ts":"2026-01-05T11:23:45.000000001Z","kind":"finish","job_id":"a0000001","worker_id":"w-gpu","exit_code":0,"status":"completed"}
+{"ts":"2026-01-05T11:24:00Z","kind":"start","job_id":"a0000002","worker_id":"w-gpu"}
+{"ts":"2026-01-05T11:30:00Z","kind":"finish","job_id":"a0000002","worker_id":"w-gpu","exit_code":3,"status":"failed"}
+{"ts":"2026-01-05T12:00:00Z","kind":"killed","job_id":"a0000003","worker_id":"w-old","exit_code":143,"status":"killed"}
+{"ts":"2026-01-05T12:00:01Z","kind":"cancel","job_id":"a0000009"}
+{"ts":"2026-01-05T12:01:00Z","kind":"runner_exit","worker_id":"w-old"}

@@ -1,0 +1,8 @@
+WORKER  HOSTNAME  PID   STARTED              TTL     REMAINING  STATUS
+w-gpu   gpu01     4242  2026-01-04 00:00:00  6d 23h  -          ○ stopped
+w-old   old01     77    2026-01-01 08:00:00  -       -          ○ stopped
+
+--stderr--
+
+--err--
+<nil>

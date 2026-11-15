@@ -1,0 +1,1 @@
+{"worker_id": "w-old", "job_id": "a0000003", "pid": 1234, "cpu_percent": 30, "rss_bytes": 1048576, "num_procs": 1, "sampled_at": "2026-01-05T11:00:00Z", "note": "nvidia-smi not found"}

@@ -1,0 +1,11 @@
+JOB_ID    RUNNER  PID  PRIO  NAME    COMMAND                        STARTED              ELAPSED  STATUS
+a0000008  w-gpu   -    0     -       echo garbage-start             garbage              ?        ✓ completed
+a0000001  w-gpu   -    0     train   bash run.sh                    2026-01-05 10:00:05  1h23m    ✓ completed
+a0000002  w-gpu   -    5     -       python3 -u eval.py --epochs 5  2026-01-05 11:24:00  6m       ✗ failed
+a0000006  -       -    0     -       echo hi                        -                    -        ◌ queued
+a0000007  w-gpu   -    2     TrainB  bash z.sh                      -                    -        ◌ queued
+
+--stderr--
+
+--err--
+<nil>

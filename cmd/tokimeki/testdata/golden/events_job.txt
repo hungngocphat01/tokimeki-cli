@@ -1,0 +1,8 @@
+2026-01-05T10:00:00.123456789Z submit job=a0000001
+2026-01-05T10:00:05.5Z start worker=w-gpu job=a0000001
+2026-01-05T11:23:45.000000001Z finish worker=w-gpu job=a0000001 exit=0 status=completed
+
+--stderr--
+
+--err--
+<nil>

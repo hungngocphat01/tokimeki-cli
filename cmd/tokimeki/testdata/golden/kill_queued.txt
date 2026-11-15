@@ -1,0 +1,18 @@
+
+--stderr--
+Error: job a0000006 has no assigned worker (status=queued); use `tok cancel a0000006` for queued jobs
+Usage:
+  tok kill <job_id> [flags]
+
+Flags:
+  -h, --help               help for kill
+      --signal int         signal number to send (default 15)
+      --timeout duration   response timeout (default 30s)
+      --worker string      explicit worker ID (override meta lookup)
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+
+
+--err--
+job a0000006 has no assigned worker (status=queued); use `tok cancel a0000006` for queued jobs

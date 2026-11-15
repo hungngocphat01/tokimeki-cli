@@ -1,0 +1,1 @@
+{"worker_id": "w-gpu", "job_id": "a0000002", "pid": 999, "cpu_percent": 250.5, "rss_bytes": 2147483648, "gpu_util_percent": 85, "gpu_mem_bytes": 15890000000, "gpu_mem_total_bytes": 42949672960, "num_threads": 12, "num_procs": 3, "sampled_at": "2026-01-05T11:25:00Z"}

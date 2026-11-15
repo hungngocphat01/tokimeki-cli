@@ -1,0 +1,18 @@
+{
+  "job_id": "a0000001",
+  "worker_id": "w-gpu",
+  "command": "bash /home/u/exp/run.sh",
+  "status": "completed",
+  "submitted_at": "2026-01-05T10:00:00Z",
+  "started_at": "2026-01-05T10:00:05Z",
+  "finished_at": "2026-01-05T11:23:45Z",
+  "exit_code": 0,
+  "user": "u",
+  "name": "train",
+  "attempts": 1
+}
+
+--stderr--
+
+--err--
+<nil>

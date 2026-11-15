@@ -1,0 +1,9 @@
+would remove job (size cap): a0000008 (completed, 295B)
+would remove job (size cap): a0000004 (crashed, 293B)
+would remove job (size cap): a0000001 (completed, 499B)
+GC dry-run: 3 items would be removed
+
+--stderr--
+
+--err--
+<nil>

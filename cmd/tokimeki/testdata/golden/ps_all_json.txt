@@ -1,0 +1,71 @@
+[
+  {
+    "job_id": "a0000008",
+    "runner": "w-gpu",
+    "command": "echo garbage-start",
+    "status": "completed",
+    "submitted_at": "2026-01-05T09:00:00Z",
+    "started_at": "garbage",
+    "finished_at": "2026-01-05T09:30:00Z"
+  },
+  {
+    "job_id": "a0000001",
+    "runner": "w-gpu",
+    "command": "bash /home/u/exp/run.sh",
+    "name": "train",
+    "status": "completed",
+    "submitted_at": "2026-01-05T10:00:00Z",
+    "started_at": "2026-01-05T10:00:05Z",
+    "finished_at": "2026-01-05T11:23:45Z",
+    "elapsed_secs": 5020
+  },
+  {
+    "job_id": "a0000002",
+    "runner": "w-gpu",
+    "command": "python3 -u /home/u/exp/eval.py --epochs 5",
+    "status": "failed",
+    "submitted_at": "2026-01-05T10:10:00Z",
+    "started_at": "2026-01-05T11:24:00Z",
+    "finished_at": "2026-01-05T11:30:00Z",
+    "elapsed_secs": 360
+  },
+  {
+    "job_id": "a0000003",
+    "runner": "w-old",
+    "command": "sleep 1000",
+    "status": "killed",
+    "submitted_at": "2026-01-05T10:20:00Z",
+    "started_at": "2026-01-05T10:21:00Z",
+    "finished_at": "2026-01-05T12:00:00Z",
+    "elapsed_secs": 5940
+  },
+  {
+    "job_id": "a0000004",
+    "runner": "w-old",
+    "command": "echo crash",
+    "status": "crashed",
+    "submitted_at": "2026-01-05T10:30:00Z",
+    "started_at": "2026-01-05T10:31:00Z",
+    "finished_at": "2026-01-05T10:40:00Z",
+    "elapsed_secs": 540
+  },
+  {
+    "job_id": "a0000006",
+    "command": "echo hi",
+    "status": "queued",
+    "submitted_at": "2026-01-05T12:00:00Z"
+  },
+  {
+    "job_id": "a0000007",
+    "runner": "w-gpu",
+    "command": "bash /x/y/z.sh",
+    "name": "TrainB",
+    "status": "queued",
+    "submitted_at": "2026-01-05T12:05:00Z"
+  }
+]
+
+--stderr--
+
+--err--
+<nil>

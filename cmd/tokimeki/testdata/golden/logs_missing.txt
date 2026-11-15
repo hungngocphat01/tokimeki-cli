@@ -1,0 +1,21 @@
+
+--stderr--
+Error: job nope: stat <BASE>/jobs/nope/meta.json: no such file or directory
+Usage:
+  tok logs <job_id> [flags]
+
+Flags:
+  -a, --all        show full logs
+  -f, --follow     follow log output
+  -h, --help       help for logs
+  -p, --pager      show full logs in $PAGER (default: less)
+      --stderr     only print stderr
+      --stdout     only print stdout
+  -n, --tail int   show only the last N lines (default 100)
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+
+
+--err--
+job nope: stat <BASE>/jobs/nope/meta.json: no such file or directory

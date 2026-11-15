@@ -1,0 +1,15 @@
+{
+  "job_id": "a0000007",
+  "worker_id": "w-gpu",
+  "command": "bash /x/y/z.sh",
+  "status": "queued",
+  "submitted_at": "2026-01-05T12:05:00Z",
+  "started_at": null,
+  "finished_at": null,
+  "exit_code": null,
+  "priority": 2,
+  "name": "TrainB",
+  "cpus": 4,
+  "mem_mb": 8000,
+  "attempts": 1
+}

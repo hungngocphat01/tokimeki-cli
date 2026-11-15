@@ -1,0 +1,11 @@
+would remove job: a0000001 (completed)
+would remove job: a0000002 (failed)
+would remove job: a0000003 (killed)
+would remove job: a0000004 (crashed)
+would remove job: a0000008 (completed)
+GC dry-run: 5 items would be removed
+
+--stderr--
+
+--err--
+<nil>

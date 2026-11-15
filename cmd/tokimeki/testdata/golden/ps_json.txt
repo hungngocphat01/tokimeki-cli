@@ -1,0 +1,21 @@
+[
+  {
+    "job_id": "a0000006",
+    "command": "echo hi",
+    "status": "queued",
+    "submitted_at": "2026-01-05T12:00:00Z"
+  },
+  {
+    "job_id": "a0000007",
+    "runner": "w-gpu",
+    "command": "bash /x/y/z.sh",
+    "name": "TrainB",
+    "status": "queued",
+    "submitted_at": "2026-01-05T12:05:00Z"
+  }
+]
+
+--stderr--
+
+--err--
+<nil>
