@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ngocphat/tokimeki/protocol"
-	"github.com/ngocphat/tokimeki/shell/session"
+	"github.com/hungngocphat01/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/shell/session"
 )
 
 // The runner builds this command line in the engine; the CLI must accept it.

@@ -7,7 +7,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.6
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/charmbracelet/x/ansi v0.11.8
-	github.com/ngocphat/tokimeki v0.0.0
+	github.com/hungngocphat01/tokimeki v0.0.0-20261115122710-f7046b942528
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -32,5 +32,3 @@ require (
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 )
-
-replace github.com/ngocphat/tokimeki => ./engine

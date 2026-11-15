@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/ngocphat/tokimeki/eventlog"
-	"github.com/ngocphat/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/protocol"
 )
 
 type job struct {

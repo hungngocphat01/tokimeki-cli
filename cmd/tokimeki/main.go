@@ -18,13 +18,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/hungngocphat01/tokimeki/client"
+	"github.com/hungngocphat01/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/registry"
+	"github.com/hungngocphat01/tokimeki/runner"
+	"github.com/hungngocphat01/tokimeki/shell"
+	"github.com/hungngocphat01/tokimeki/shell/session"
 	"github.com/ngocphat/tokimeki-cli/tui"
-	"github.com/ngocphat/tokimeki/client"
-	"github.com/ngocphat/tokimeki/protocol"
-	"github.com/ngocphat/tokimeki/registry"
-	"github.com/ngocphat/tokimeki/runner"
-	"github.com/ngocphat/tokimeki/shell"
-	"github.com/ngocphat/tokimeki/shell/session"
 	"github.com/spf13/cobra"
 )
 

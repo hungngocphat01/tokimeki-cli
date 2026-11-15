@@ -12,8 +12,8 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/ngocphat/tokimeki/eventlog"
-	"github.com/ngocphat/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/protocol"
 )
 
 const refreshInterval = time.Second

@@ -12,9 +12,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/ngocphat/tokimeki/eventlog"
-	"github.com/ngocphat/tokimeki/protocol"
-	"github.com/ngocphat/tokimeki/registry"
+	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/registry"
 )
 
 func TestActiveJobsAndSelectedTelemetry(t *testing.T) {

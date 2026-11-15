@@ -12,10 +12,10 @@ import (
 	"github.com/alecthomas/chroma/v2/formatters"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
-	"github.com/ngocphat/tokimeki/client"
-	"github.com/ngocphat/tokimeki/eventlog"
-	"github.com/ngocphat/tokimeki/protocol"
-	"github.com/ngocphat/tokimeki/registry"
+	"github.com/hungngocphat01/tokimeki/client"
+	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/registry"
 )
 
 type action string

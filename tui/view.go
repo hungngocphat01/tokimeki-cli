@@ -10,9 +10,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/ngocphat/tokimeki/client"
-	"github.com/ngocphat/tokimeki/eventlog"
-	"github.com/ngocphat/tokimeki/protocol"
+	"github.com/hungngocphat01/tokimeki/client"
+	"github.com/hungngocphat01/tokimeki/eventlog"
+	"github.com/hungngocphat01/tokimeki/protocol"
 )
 
 var (

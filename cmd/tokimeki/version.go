@@ -6,10 +6,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
+	engineversion "github.com/hungngocphat01/tokimeki/version"
 )
 
 // Populated at build time via -ldflags.
 var (
+	versionCLI       = "unknown"
 	versionCommit    = "unknown"
 	versionBranch    = "unknown"
 	versionBuildTime = "unknown"
@@ -22,6 +25,8 @@ func versionCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			commit, branch, buildTime := resolvedBuildInfo()
 			fmt.Printf("tokimeki\n")
+			fmt.Printf("  version: %s\n", resolvedCLIVersion())
+			fmt.Printf("  engine: %s\n", engineversion.Engine())
 			fmt.Printf("  commit: %s\n", commit)
 			fmt.Printf("  branch: %s\n", branch)
 			fmt.Printf("  build_time: %s\n", buildTime)
@@ -55,6 +60,19 @@ func resolvedBuildInfo() (commit, branch, buildTime string) {
 
 	commit = shortCommit(commit)
 	return commit, branch, buildTime
+}
+
+// resolvedCLIVersion prefers the -ldflags stamp (git describe), then the
+// module version when installed via `go install ...@vX.Y.Z`.
+func resolvedCLIVersion() string {
+	v := fallback(versionCLI, "unknown")
+	if v != "unknown" {
+		return v
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
 }
 
 func fallback(v, d string) string {
