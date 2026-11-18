@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Verifies that go.mod pins the engine to a release tag (vX.Y.Z) with no
 # replace directive, so release builds link exactly the engine this CLI
-# version was tested against. go.work is ignored (GOWORK=off) to match how
+# version was tested against. The CLI and engine share one version number:
+# on a commit tagged vX.Y.Z, the engine must be pinned at vX.Y.Z too. go.work is ignored (GOWORK=off) to match how
 # release targets build.
 set -euo pipefail
 
@@ -25,4 +26,9 @@ if ! [[ $ver =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 	fail "go.mod requires $engine $ver, which is not a release tag"
 fi
 
-echo "engine $ver"
+cli=$(git describe --tags --exact-match --match 'v[0-9]*.[0-9]*.[0-9]*' HEAD 2>/dev/null || true)
+if [[ -n $cli && $cli != "$ver" ]]; then
+	fail "CLI is tagged $cli but go.mod requires $engine $ver; versions must match"
+fi
+
+echo "engine $ver${cli:+ (matches CLI $cli)}"

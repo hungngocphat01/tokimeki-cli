@@ -30,22 +30,22 @@ Developing both side by side: use an uncommitted `go.work` in a parent dir
 
 ## Versioning (CLI ↔ engine)
 
-The two repos are versioned independently with semver tags. **Each CLI commit
-pins exactly one engine release in `go.mod`**; that pin is the CLI version's
-engine requirement, and it moves only when the CLI deliberately adopts a new
-engine.
+The two repos share one version number: a release tags both with the same
+semver tag, and **CLI `vX.Y.Z` pins engine `vX.Y.Z` in `go.mod`**, so
+`tokimeki version` shows the same number for `version` and `engine`.
 
 | Change | What to do |
 |---|---|
-| CLI-only change | Tag the CLI (`vX.Y.Z`). `go.mod` is untouched, so it keeps the same engine. |
-| Engine-only change | Tag the engine. Existing CLI versions keep building against their pinned engine. |
-| Engine change the CLI should ship (usual case) | Tag the engine, then in the CLI run `make bump-engine V=vX.Y.Z`, commit, and tag a CLI release. |
+| Any release | Tag the engine `vX.Y.Z` and push it, then in the CLI run `make bump-engine V=vX.Y.Z`, commit, and tag the CLI `vX.Y.Z`. |
+| Only the CLI changed | Still tag the engine `vX.Y.Z` at its current `main`, then bump and tag the CLI as above. |
+| Only the engine changed | Tag the engine, then bump and tag the CLI with the same version. |
 
 Enforcement:
 
 - `make check-engine` (`scripts/check-engine.sh`) fails unless go.mod requires
   the engine at a release tag (`vX.Y.Z`, not a pseudo-version) with no
-  `replace`.
+  `replace`. On a CLI commit tagged `vX.Y.Z`, it also fails unless that engine
+  tag is `vX.Y.Z`.
 - `release`, `install`, and the cross targets run `check-engine` first and
   build with `GOWORK=off`, so a stray `go.work` can't swap in a local engine.
 - `go.sum` pins the engine's content hash, so a re-tagged engine fails the build

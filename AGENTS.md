@@ -58,20 +58,23 @@ go vet ./... && go test ./...
 make check-engine    # verify go.mod pins a tagged engine release
 make release         # host-arch stripped build (runs check-engine, GOWORK=off)
 make linux-amd64     # cluster build; also linux-arm64, darwin-arm64, cross
-make bump-engine V=vX.Y.Z   # adopt a new engine release
+make bump-engine V=vX.Y.Z   # pin the engine release with the same version
 ```
 
 `CGO_ENABLED=0` is exported by the Makefile; binaries are static.
 
 ## Versioning
 
-CLI and engine are versioned independently with semver tags. **Each CLI commit
-pins exactly one engine release in `go.mod`** — that pin is the CLI version's
-engine requirement, and it only changes via `make bump-engine`.
+CLI and engine share one version number. A release tags both repos with the
+same `vX.Y.Z`, and **CLI `vX.Y.Z` pins engine `vX.Y.Z` in `go.mod`**; the pin
+only changes via `make bump-engine`.
 
-- CLI-only change: tag the CLI; engine pin untouched.
-- Engine-only change: the engine gets tagged; nothing changes here until bumped.
-- Usual flow: engine tag → `make bump-engine V=vX.Y.Z` → commit → CLI tag.
+- Release flow: engine tag → `make bump-engine V=vX.Y.Z` → commit → CLI tag
+  `vX.Y.Z`.
+- If only one repo changed, still tag both; the unchanged repo is tagged at its
+  current `main`.
+- `make check-engine` fails on a commit tagged `vX.Y.Z` whose engine pin is a
+  different version.
 
 Release targets (`release`, `install`, `linux-*`, `darwin-*`) run
 `scripts/check-engine.sh` and build with `GOWORK=off`. The check fails if the
