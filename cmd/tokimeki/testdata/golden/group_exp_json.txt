@@ -1,0 +1,196 @@
+{
+  "group": "exp",
+  "coordinators": {
+    "total": 1,
+    "active": 0,
+    "queued": 0,
+    "running": 0,
+    "stopped": 1,
+    "completed": 0,
+    "failed": 0,
+    "killed": 0,
+    "crashed": 0
+  },
+  "compute": {
+    "total": 5,
+    "active": 1,
+    "queued": 1,
+    "running": 0,
+    "stopped": 1,
+    "completed": 1,
+    "failed": 1,
+    "killed": 0,
+    "crashed": 1
+  },
+  "failed": [
+    {
+      "job_id": "c0000005",
+      "worker_id": "w-gpu",
+      "command": "python train.py --config r4.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r4",
+      "status": "failed",
+      "effective_status": "failed",
+      "exit_code": 1,
+      "attempts": 1,
+      "submitted_at_ns": 1767614980000000000,
+      "started_at_ns": 1767615000000000000,
+      "finished_at_ns": 1767615120000000000,
+      "elapsed_secs": 120
+    },
+    {
+      "job_id": "c0000006",
+      "worker_id": "w-old",
+      "command": "python train.py --config r5.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r5",
+      "status": "crashed",
+      "effective_status": "crashed",
+      "exit_code": 1,
+      "attempts": 1,
+      "submitted_at_ns": 1767614990000000000,
+      "started_at_ns": 1767615000000000000,
+      "finished_at_ns": 1767615060000000000,
+      "elapsed_secs": 60
+    }
+  ],
+  "stopped": [
+    {
+      "job_id": "c0000001",
+      "worker_id": "w-multi",
+      "command": "bash sweep.sh",
+      "kind": "coordinator",
+      "name": "exp",
+      "status": "running",
+      "effective_status": "stopped",
+      "pid": 901,
+      "exit_code": null,
+      "attempts": 1,
+      "submitted_at_ns": 1767614940000000000,
+      "elapsed_secs": 0
+    },
+    {
+      "job_id": "c0000002",
+      "worker_id": "w-multi",
+      "command": "python train.py --config r1.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r1",
+      "status": "running",
+      "effective_status": "stopped",
+      "pid": 902,
+      "exit_code": null,
+      "attempts": 1,
+      "submitted_at_ns": 1767614950000000000,
+      "elapsed_secs": 0
+    }
+  ],
+  "jobs": [
+    {
+      "job_id": "c0000003",
+      "command": "python train.py --config r2.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r2",
+      "status": "queued",
+      "effective_status": "queued",
+      "exit_code": null,
+      "attempts": 1,
+      "queue_position": 3,
+      "submitted_at_ns": 1767614960000000000,
+      "elapsed_secs": 0
+    },
+    {
+      "job_id": "c0000001",
+      "worker_id": "w-multi",
+      "command": "bash sweep.sh",
+      "kind": "coordinator",
+      "name": "exp",
+      "status": "running",
+      "effective_status": "stopped",
+      "pid": 901,
+      "exit_code": null,
+      "attempts": 1,
+      "submitted_at_ns": 1767614940000000000,
+      "elapsed_secs": 0
+    },
+    {
+      "job_id": "c0000002",
+      "worker_id": "w-multi",
+      "command": "python train.py --config r1.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r1",
+      "status": "running",
+      "effective_status": "stopped",
+      "pid": 902,
+      "exit_code": null,
+      "attempts": 1,
+      "submitted_at_ns": 1767614950000000000,
+      "elapsed_secs": 0
+    },
+    {
+      "job_id": "c0000004",
+      "worker_id": "w-gpu",
+      "command": "python train.py --config r3.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r3",
+      "status": "completed",
+      "effective_status": "completed",
+      "exit_code": 0,
+      "attempts": 1,
+      "submitted_at_ns": 1767614970000000000,
+      "started_at_ns": 1767615000000000000,
+      "finished_at_ns": 1767615300000000000,
+      "elapsed_secs": 300
+    },
+    {
+      "job_id": "c0000005",
+      "worker_id": "w-gpu",
+      "command": "python train.py --config r4.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r4",
+      "status": "failed",
+      "effective_status": "failed",
+      "exit_code": 1,
+      "attempts": 1,
+      "submitted_at_ns": 1767614980000000000,
+      "started_at_ns": 1767615000000000000,
+      "finished_at_ns": 1767615120000000000,
+      "elapsed_secs": 120
+    },
+    {
+      "job_id": "c0000006",
+      "worker_id": "w-old",
+      "command": "python train.py --config r5.yaml",
+      "kind": "compute",
+      "parent": "c0000001",
+      "name": "exp",
+      "desc": "r5",
+      "status": "crashed",
+      "effective_status": "crashed",
+      "exit_code": 1,
+      "attempts": 1,
+      "submitted_at_ns": 1767614990000000000,
+      "started_at_ns": 1767615000000000000,
+      "finished_at_ns": 1767615060000000000,
+      "elapsed_secs": 60
+    }
+  ]
+}
+
+--stderr--
+
+--err--
+<nil>

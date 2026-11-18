@@ -1,9 +1,12 @@
 TOKIMEKI JOB SYSTEM
-RUNNER  HOST   JOB       PID   CPU%  RSS   GPU%  GPU_MEM      PROCS  AGE
-w-gpu   gpu01  a0000002  999   250   2.0G  85%   14.8G/40.0G  3      <masked>
-w-old   old01  a0000003  1234  30    1M    n/a   n/a          1      <masked>
+RUNNER   HOST   JOB       PID   CPU%  RSS   GPU%  GPU_MEM      PROCS  AGE
+w-gpu    gpu01  a0000002  999   250   2.0G  85%   14.8G/40.0G  3      <masked>
+w-multi  gpu03  c0000001  901   1     50M   n/a   n/a          1      <masked>
+w-multi  gpu03  c0000002  902   249   3.0G  n/a   n/a          4      <masked>
+w-old    old01  a0000003  1234  30    1M    n/a   n/a          1      <masked>
 
 --stderr--
+note: stats: nvidia-smi not found; GPU stats disabled
 note: nvidia-smi not found
 
 --err--

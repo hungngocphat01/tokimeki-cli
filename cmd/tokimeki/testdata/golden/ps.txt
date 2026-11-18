@@ -1,6 +1,7 @@
-JOB_ID    RUNNER  PID  PRIO  NAME    COMMAND    STARTED  ELAPSED  STATUS
-a0000007  w-gpu   -    2     TrainB  bash z.sh  -        -        ◌ queued
-a0000006  -       -    0     -       echo hi    -        -        ◌ queued
+JOB_ID    RUNNER  PID  PRIO  GROUP   COMMAND                           STARTED  ELAPSED  STATUS
+a0000007  w-gpu   -    2     TrainB  bash z.sh                         -        -        ◌ queued
+a0000006  -       -    0     -       echo hi                           -        -        ◌ queued
+c0000003  -       -    0     exp     python train.py --config r2.yaml  -        -        ◌ queued
 
 --stderr--
 

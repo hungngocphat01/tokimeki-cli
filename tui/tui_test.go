@@ -35,7 +35,7 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	writeJSON(paths.JobMeta("queued01"), protocol.JobMeta{JobID: "queued01", Status: protocol.StatusQueued, SubmittedAt: "2026-01-01T00:01:00Z"})
 	writeJSON(paths.JobMeta("finished"), protocol.JobMeta{JobID: "finished", Status: protocol.StatusCompleted, SubmittedAt: "2026-01-01T00:02:00Z"})
 	writeJSON(paths.WorkerInfo("node1"), protocol.WorkerInfo{WorkerID: "node1", Hostname: "gpu01"})
-	writeJSON(paths.WorkerCurrent("node1"), protocol.JobInfo{JobID: "running1", PID: 222})
+	writeJSON(paths.WorkerRunning("node1", "running1"), protocol.JobInfo{JobID: "running1", PID: 222})
 	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.workers) != 1 || state.workers[0].stats == nil || state.workers[0].stats.CPUPercent != 143 {
+	if len(state.workers) != 1 || len(state.workers[0].jobs) != 1 || state.workers[0].jobs[0].stats == nil || state.workers[0].jobs[0].stats.CPUPercent != 143 {
 		t.Fatalf("runner stats snapshot = %+v", state.workers)
 	}
 	jobs := orderJobs(state.jobs, false)
@@ -183,7 +183,7 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 func TestRunnerDetailListShowsOnlyNames(t *testing.T) {
 	m := model{feature: runnersFeature, workers: []worker{
 		{Runner: client.Runner{ID: "idle", HasInfo: true, Hostname: "gpu01", Alive: true}},
-		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true}, Current: &client.CurrentJob{JobID: "job1"}},
+		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true}, jobs: []runnerJob{{CurrentJob: client.CurrentJob{JobID: "job1"}}}},
 	}}
 	for i, want := range []struct{ label, status string }{
 		{"idle", "idle"},
@@ -217,8 +217,8 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 30,
 		feature: runnersFeature, focus: 1,
 		workers: []worker{
-			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true}, Current: &client.CurrentJob{JobID: "job1", PID: 123},
-				stats: &client.StatsSample{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUAvailable: true, GPUUtilPercent: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAtNs: time.Now().UnixNano()}},
+			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true}, jobs: []runnerJob{{CurrentJob: client.CurrentJob{JobID: "job1", PID: 123},
+				stats: &client.StatsSample{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUAvailable: true, GPUUtilPercent: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAtNs: time.Now().UnixNano()}}}},
 			{Runner: client.Runner{ID: "gpu-b", HasInfo: true, Hostname: "node-b", Alive: true}},
 		},
 	}
@@ -509,4 +509,37 @@ type statsFile struct {
 	CPUPercent float64 `json:"cpu_percent"`
 	RSSBytes   int64   `json:"rss_bytes"`
 	SampledAt  string  `json:"sampled_at"`
+}
+
+func TestTUIRunnerWithTwoJobs(t *testing.T) {
+	now := time.Now().UnixNano()
+	m := model{
+		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 40,
+		feature: runnersFeature, focus: 1, runnerStats: true,
+		workers: []worker{{
+			Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true, ComputeThreads: 3},
+			jobs: []runnerJob{
+				{CurrentJob: client.CurrentJob{JobID: "coord1", Kind: protocol.KindCoordinator, PID: 11, Command: "bash sweep.sh"},
+					stats: &client.StatsSample{JobID: "coord1", CPUPercent: 1, NumProcs: 1, SampledAtNs: now}},
+				{CurrentJob: client.CurrentJob{JobID: "train1", Kind: protocol.KindCompute, PID: 12, Command: "python train.py"},
+					stats: &client.StatsSample{JobID: "train1", CPUPercent: 250, NumProcs: 4, SampledAtNs: now}},
+			},
+		}},
+	}
+	if _, status := m.itemLabel(0); status != "running" {
+		t.Fatalf("status = %q, want running", status)
+	}
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"JOBS 1/3+C", "[C] coord1", "train1", "CPU 250%", "PROCS 4"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("stats view missing %q: %s", want, view)
+		}
+	}
+	m.runnerStats = false
+	detail := ansi.Strip(m.renderRunnerDetail(80, 30))
+	for _, want := range []string{"Jobs: 1/3+C", "[C] coord1  PID 11  bash sweep.sh", "train1  PID 12  python train.py"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail missing %q: %s", want, detail)
+		}
+	}
 }

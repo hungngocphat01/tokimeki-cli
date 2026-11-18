@@ -1,0 +1,1 @@
+{"job_id":"c0000004","worker_id":"w-gpu","command":"python train.py --config r3.yaml","status":"completed","submitted_at":"2026-01-05T12:09:30Z","started_at":"2026-01-05T12:10:00Z","finished_at":"2026-01-05T12:15:00Z","exit_code":0,"name":"exp","desc":"r3","parent":"c0000001","attempts":1}

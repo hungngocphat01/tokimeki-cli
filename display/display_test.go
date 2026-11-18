@@ -149,3 +149,15 @@ func TestStatusDisplay(t *testing.T) {
 		t.Errorf("Unicode StatusDisplay wrong")
 	}
 }
+
+func TestRunnerSlots(t *testing.T) {
+	for _, tc := range []struct {
+		compute, threads int
+		coord            bool
+		want             string
+	}{{0, 1, false, "0/1"}, {2, 3, true, "2/3+C"}, {0, 2, true, "0/2+C"}} {
+		if got := RunnerSlots(tc.compute, tc.threads, tc.coord); got != tc.want {
+			t.Errorf("RunnerSlots(%d, %d, %v) = %q, want %q", tc.compute, tc.threads, tc.coord, got, tc.want)
+		}
+	}
+}

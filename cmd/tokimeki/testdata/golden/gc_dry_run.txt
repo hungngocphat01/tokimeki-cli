@@ -3,7 +3,10 @@ would remove job: a0000002 (failed)
 would remove job: a0000003 (killed)
 would remove job: a0000004 (crashed)
 would remove job: a0000008 (completed)
-GC dry-run: 5 items would be removed
+would remove job: c0000004 (completed)
+would remove job: c0000005 (failed)
+would remove job: c0000006 (crashed)
+GC dry-run: 8 items would be removed
 
 --stderr--
 

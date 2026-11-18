@@ -12,6 +12,32 @@
     "running_jobs": []
   },
   {
+    "worker_id": "w-multi",
+    "has_info": true,
+    "hostname": "gpu03",
+    "pid": 900,
+    "version": "v0.4.0",
+    "started_at_ns": 1767614400000000000,
+    "alive": false,
+    "compute_threads": 3,
+    "running_jobs": [
+      {
+        "job_id": "c0000001",
+        "kind": "coordinator",
+        "pid": 901,
+        "command": "bash sweep.sh",
+        "started_at_ns": 1767615000000000000
+      },
+      {
+        "job_id": "c0000002",
+        "kind": "compute",
+        "pid": 902,
+        "command": "python train.py --config r1.yaml",
+        "started_at_ns": 1767615060000000000
+      }
+    ]
+  },
+  {
     "worker_id": "w-old",
     "has_info": true,
     "hostname": "old01",

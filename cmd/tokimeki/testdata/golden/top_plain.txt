@@ -1,14 +1,18 @@
 <masked>  base=<BASE>
 
 === RUNNERS ===
-  STATUS     WORKER  HOST   PID   HEARTBEAT
-  ○ stopped  w-gpu   gpu01  4242  ?
-  ○ stopped  w-old   old01  77    ?
+  STATUS     WORKER   HOST   PID   HEARTBEAT
+  ○ stopped  w-gpu    gpu01  4242  ?
+  ○ stopped  w-multi  gpu03  900   ?
+  ○ stopped  w-old    old01  77    ?
 
 === JOBS ===
-  STATE  JOB_ID    WORKER  PRIO  CMD        ELAPSED
-  ◌      a0000007  w-gpu   2     bash z.sh  -
-  ◌      a0000006  -       0     echo hi    -
+  STATE  JOB_ID    WORKER   PRIO  CMD                             ELAPSED
+  ▶      c0000001  w-multi  0     bash sweep.sh                   -
+  ▶      c0000002  w-multi  0     python train.py --config r1...  -
+  ◌      a0000007  w-gpu    2     bash z.sh                       -
+  ◌      a0000006  -        0     echo hi                         -
+  ◌      c0000003  -        0     python train.py --config r2...  -
 
 === RECENT ===
   (no recent jobs)

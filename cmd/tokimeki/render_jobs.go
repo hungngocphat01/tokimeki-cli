@@ -38,9 +38,9 @@ func printPS(out io.Writer, jobs []client.Job) error {
 	buf := &strings.Builder{}
 	w := tabwriter.NewWriter(buf, 0, 4, 2, ' ', 0)
 	if showPrio {
-		fmt.Fprintln(w, "JOB_ID\tRUNNER\tPID\tPRIO\tNAME\tCOMMAND\tSTARTED\tELAPSED\tSTATUS")
+		fmt.Fprintln(w, "JOB_ID\tRUNNER\tPID\tPRIO\tGROUP\tCOMMAND\tSTARTED\tELAPSED\tSTATUS")
 	} else {
-		fmt.Fprintln(w, "JOB_ID\tRUNNER\tPID\tNAME\tCOMMAND\tSTARTED\tELAPSED\tSTATUS")
+		fmt.Fprintln(w, "JOB_ID\tRUNNER\tPID\tGROUP\tCOMMAND\tSTARTED\tELAPSED\tSTATUS")
 	}
 	for _, job := range jobs {
 		cells := []string{job.ID, dash(job.Worker), psPID(job)}
@@ -49,7 +49,7 @@ func printPS(out io.Writer, jobs []client.Job) error {
 		}
 		cells = append(cells,
 			psName(job),
-			display.Truncate(display.SmartCommand(job.Command), 40),
+			display.Truncate(psCommand(job), 40),
 			display.LocalTime(job.StartedAtNs),
 			psElapsed(job),
 			display.StatusDisplay(job.EffectiveStatus, false),
@@ -80,6 +80,61 @@ func psPID(job client.Job) string {
 		return "-"
 	}
 	return strconv.Itoa(job.PID)
+}
+
+// psCommand shortens the command and marks coordinators with "[C] ".
+func psCommand(job client.Job) string {
+	cmd := display.SmartCommand(job.Command)
+	if job.Kind == protocol.KindCoordinator {
+		cmd = "[C] " + cmd
+	}
+	return cmd
+}
+
+// printGroup renders a group report: a summary, then its jobs as the ps
+// table.
+func printGroup(out io.Writer, rep client.GroupReport) error {
+	fmt.Fprintf(out, "Group %s\n", rep.Group)
+	fmt.Fprintf(out, "Coordinators: %s\n", groupCounts(rep.Coordinators))
+	fmt.Fprintf(out, "Compute:      %s\n", groupCounts(rep.Compute))
+	if len(rep.Failed) > 0 {
+		fmt.Fprintf(out, "Failed:       %s\n", jobList(rep.Failed))
+	}
+	if len(rep.Stopped) > 0 {
+		fmt.Fprintf(out, "Stopped:      %s (runner gone)\n", jobList(rep.Stopped))
+	}
+	fmt.Fprintln(out)
+	return printPS(out, rep.Jobs)
+}
+
+// groupCounts renders "8 total · 2 queued · ..." with zero counts omitted.
+func groupCounts(g client.GroupCounts) string {
+	parts := []string{fmt.Sprintf("%d total", g.Total)}
+	for _, c := range []struct {
+		n     int
+		label string
+	}{
+		{g.Queued, "queued"}, {g.Running, "running"}, {g.Stopped, "stopped"}, {g.Completed, "completed"},
+		{g.Failed, "failed"}, {g.Killed, "killed"}, {g.Crashed, "crashed"},
+	} {
+		if c.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.label))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// jobList renders "id (status, exit N), ..." for the group summary.
+func jobList(jobs []client.Job) string {
+	parts := make([]string, len(jobs))
+	for i, job := range jobs {
+		detail := job.EffectiveStatus
+		if job.ExitCode != nil && *job.ExitCode != 0 && job.EffectiveStatus == protocol.StatusFailed {
+			detail += fmt.Sprintf(", exit %d", *job.ExitCode)
+		}
+		parts[i] = fmt.Sprintf("%s (%s)", job.ID, detail)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // psName renders the job's tag for the table, or "-" when unset.

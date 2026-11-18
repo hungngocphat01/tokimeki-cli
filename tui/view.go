@@ -145,28 +145,29 @@ func (m model) runnerStatsLines(width, height int) []string {
 	visible := max(1, height/4)
 	start := max(0, m.selected[runnersFeature]-visible+1)
 	lines := make([]string, 0, height)
-	for i := start; i < len(m.workers) && len(lines)+4 <= height; i++ {
+	for i := start; i < len(m.workers) && len(lines) < height; i++ {
 		item := m.workers[i]
 		marker := " "
 		if i == m.selected[runnersFeature] {
 			marker = "›"
 		}
-		jobID, pid := "-", "-"
-		if item.Current != nil {
-			jobID = item.Current.JobID
-			pid = fmt.Sprintf("%d", item.Current.PID)
-		}
-		label := fmt.Sprintf(" %s %s  HOST %s  JOB %s  PID %s", marker, item.ID, item.Hostname, jobID, pid)
+		label := fmt.Sprintf(" %s %s  HOST %s  JOBS %s", marker, item.ID, item.Hostname, item.slots())
 		if i == m.selected[runnersFeature] {
 			label = lipgloss.NewStyle().Foreground(accent).Bold(true).Render(fit(label, width))
 		}
 		lines = append(lines, label)
-		if item.Current == nil {
+		if len(item.jobs) == 0 {
 			lines = append(lines, "    idle · no active job", "")
-		} else if item.stats == nil {
-			lines = append(lines, "    Waiting for a fresh stats sample", "")
-		} else {
-			s := item.stats
+			continue
+		}
+		note := ""
+		for _, j := range item.jobs {
+			lines = append(lines, fmt.Sprintf("    %s  PID %d", j.label(), j.PID))
+			s := j.stats
+			if s == nil {
+				lines = append(lines, "      Waiting for a fresh stats sample")
+				continue
+			}
 			gpu := fmt.Sprintf("%d%%", s.GPUUtilPercent)
 			gpuMem := formatBytes(s.GPUMemBytes)
 			if noGPU(s) {
@@ -179,15 +180,17 @@ func (m model) runnerStatsLines(width, height int) []string {
 				age = fmt.Sprintf("%ds", max(0, int(time.Since(time.Unix(0, s.SampledAtNs)).Seconds())))
 			}
 			lines = append(lines,
-				fmt.Sprintf("    CPU %.0f%%   RSS %s   GPU %s", s.CPUPercent, formatBytes(s.RSSBytes), gpu),
-				fmt.Sprintf("    GPU_MEM %s   PROCS %d   AGE %s", gpuMem, s.NumProcs, age),
+				fmt.Sprintf("      CPU %.0f%%   RSS %s   GPU %s", s.CPUPercent, formatBytes(s.RSSBytes), gpu),
+				fmt.Sprintf("      GPU_MEM %s   PROCS %d   AGE %s", gpuMem, s.NumProcs, age),
 			)
-		}
-		note := ""
-		if item.stats != nil && item.stats.Note != "" {
-			note = "    " + cleanText(item.stats.Note)
+			if note == "" && s.Note != "" {
+				note = "    " + cleanText(s.Note)
+			}
 		}
 		lines = append(lines, note)
+	}
+	if len(lines) > height {
+		lines = lines[:height]
 	}
 	return lines
 }
@@ -418,16 +421,30 @@ func (m model) renderRunnerDetail(width, height int) string {
 		if selected.HeartbeatNs != 0 {
 			info = append(info, fmt.Sprintf(" Heartbeat: %ds ago", max(0, int(time.Since(time.Unix(0, selected.HeartbeatNs)).Seconds()))))
 		}
-		if selected.Current != nil {
-			label := " Current"
+		info = append(info, " Jobs: "+selected.slots())
+		if len(selected.jobs) > 0 {
+			label := " Running:"
 			if !selected.Alive {
-				label = " Last recorded"
+				label = " Last recorded:"
 			}
-			info = append(info, fmt.Sprintf("%s job: %s", label, selected.Current.JobID), fmt.Sprintf(" Job PID: %d", selected.Current.PID), " Command: "+cleanText(selected.Current.Command))
+			info = append(info, label)
+			for _, j := range selected.jobs {
+				info = append(info, fmt.Sprintf("  %s  PID %d  %s", j.label(), j.PID, cleanText(j.Command)))
+			}
 		}
-		if selected.stats != nil {
-			item := job{Job: client.Job{Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}, stats: selected.stats}
-			resources = metricLines(&item, width-1)
+		var sampled []string
+		for _, j := range selected.jobs {
+			if j.stats == nil {
+				continue
+			}
+			item := job{Job: client.Job{Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}, stats: j.stats}
+			if len(selected.jobs) > 1 {
+				sampled = append(sampled, " "+j.label())
+			}
+			sampled = append(sampled, metricLines(&item, width-1)...)
+		}
+		if len(sampled) > 0 {
+			resources = sampled
 		}
 	}
 	upper := pane(title, headWindow(info, upperHeight-1, m.upperOffset()), width, upperHeight, m.focus == 2 && m.detailSection == 0)

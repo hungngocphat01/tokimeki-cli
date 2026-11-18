@@ -1,0 +1,17 @@
+
+--stderr--
+Error: group "nope" has no jobs
+Usage:
+  tok group <group> [flags]
+
+Flags:
+  -h, --help   help for group
+      --json   print the group report as JSON (see docs/USAGE.md)
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+      --verbose       print engine debug logs on stderr
+
+
+--err--
+group "nope" has no jobs

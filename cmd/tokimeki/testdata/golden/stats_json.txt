@@ -16,6 +16,36 @@
     "stale": true
   },
   {
+    "worker_id": "w-multi",
+    "hostname": "gpu03",
+    "job_id": "c0000001",
+    "pid": 901,
+    "cpu_percent": 1,
+    "rss_bytes": 52428800,
+    "gpu_available": false,
+    "gpu_util_percent": 0,
+    "gpu_mem_bytes": 0,
+    "num_procs": 1,
+    "sampled_at_ns": 1767615600000000000,
+    "stale": true,
+    "note": "stats: nvidia-smi not found; GPU stats disabled"
+  },
+  {
+    "worker_id": "w-multi",
+    "hostname": "gpu03",
+    "job_id": "c0000002",
+    "pid": 902,
+    "cpu_percent": 249,
+    "rss_bytes": 3169845248,
+    "gpu_available": false,
+    "gpu_util_percent": 0,
+    "gpu_mem_bytes": 0,
+    "num_procs": 4,
+    "sampled_at_ns": 1767615600000000000,
+    "stale": true,
+    "note": "stats: nvidia-smi not found; GPU stats disabled"
+  },
+  {
     "worker_id": "w-old",
     "hostname": "old01",
     "job_id": "a0000003",

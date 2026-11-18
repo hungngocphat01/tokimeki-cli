@@ -4,6 +4,7 @@
 package display
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,4 +235,14 @@ func Truncate(s string, n int) string {
 		return s
 	}
 	return s[:n-3] + "..."
+}
+
+// RunnerSlots renders a runner's slot use as "<compute running>/<threads>",
+// with "+C" when its coordinator slot is in use.
+func RunnerSlots(compute, threads int, coordinator bool) string {
+	s := fmt.Sprintf("%d/%d", compute, threads)
+	if coordinator {
+		s += "+C"
+	}
+	return s
 }

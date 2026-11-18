@@ -63,3 +63,10 @@ func TestVerboseEnablesDebug(t *testing.T) {
 		t.Fatal("--verbose did not enable debug output")
 	}
 }
+
+func TestGroupMissingJSONEnvelope(t *testing.T) {
+	out, code := runJSON(t, t.TempDir(), "group", "nope", "--json")
+	if gotCode, msg := errorEnvelope(t, out); code != 1 || gotCode != "not_found" || msg != `group "nope" has no jobs` {
+		t.Fatalf("exit %d code %q msg %q", code, gotCode, msg)
+	}
+}

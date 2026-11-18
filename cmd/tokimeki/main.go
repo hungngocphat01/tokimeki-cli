@@ -258,6 +258,35 @@ func psCmd() *cobra.Command {
 	return cmd
 }
 
+// --- group ---
+
+func groupCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "group <group>",
+		Short: "Show a group's jobs and counts",
+		Long: `Show every job carrying the group label: a summary (coordinators, compute
+jobs by status, failed and stopped jobs) and the ps table.
+
+--json prints the full report. A coordinator polls it and waits for
+compute.active == 0 (queued + running compute jobs); its own run is counted
+under coordinators. Jobs on a dead runner count as stopped, not active.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rep, err := client.New(resolveBase()).Group(args[0])
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return writeJSON(rep)
+			}
+			return printGroup(os.Stdout, rep)
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the group report as JSON (see docs/USAGE.md)")
+	return cmd
+}
+
 // --- ls ---
 
 func lsCmd() *cobra.Command {
