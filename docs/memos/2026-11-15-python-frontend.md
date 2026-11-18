@@ -1,99 +1,204 @@
-# Memo: Python front-end and engine-as-core rework
+# Memo: engine-as-core, sub-jobs, and the Python front-end
 
-Status: **phase 1 planned** (refactor only; Python deferred). Plan:
-`tokimeki-engine/docs/superpowers/plans/2026-11-15-engine-core-cli-shim.md`.
 Started: 2026-11-15
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | Engine = core (typed data, raw units, coded errors, no printing); CLI = shim; `--json` everywhere | **Done**, released v0.3.0 (2026-11-18) |
+| 2 | Coordinator jobs, groups, multi-slot runners (this memo's design) | **Design agreed 2026-11-18**; next: plan + implement in engine and CLI |
+| 3 | Python package: thin shim for training scripts | Deferred until phase 2 lands |
 
 ## Motivation
 
-Current ML workflow (e.g. the `evident` project):
+Current ML workflow (the `evident` project, `/Volumes/s2510159/source/evident`):
 
-1. One bash script submits one Python training driver as one Tokimeki job.
-2. The driver expands a grid (~20 configs) and runs it **sequentially**.
-3. To keep one GPU busy, the driver packs `n_workers` (e.g. 3) independent
-   training processes at a time.
-4. Results are combined at the end.
+1. `scripts/sweep_expand.py` expands a grid YAML (`sweep.grid` / `sweep.list`)
+   into concrete runs with deterministic `run_id`s, deals them **round-robin
+   into fixed shards** (`configs/.../tmp/<exp>/configs/worker-NNN.yaml`) and
+   writes `manifest.jsonl`.
+2. One batch script per shard (`sh/run_cifar100_redl_worker_000.sh`) runs
+   `scripts/train.py --config worker-NNN.yaml --resume`, which runs the shard's
+   configs **sequentially**.
+3. `scripts/sweep_merge.py --manifest` joins every
+   `runs/<exp>/runs/<run_id>/logs/test_results.csv` into one table.
 
-**Problem:** grid work is bound to the job that owns it. Submit two drivers;
-if one finishes first, its runner goes idle while the other still has
-configs queued.
+To keep a GPU busy, several trainings share it (the HPO scripts use
+`SLOTS=3` on A100 hosts, 2 elsewhere).
 
-**Eventual fix (later phase):** submit each config as its own unit of work
-(sub-job) so any free runner can pick it up. The existing protocol is mostly
-sufficient; the grid expand / run / combine logic is deferred.
+**Problem:** shards are fixed before anything runs. Submit two shards; when one
+finishes first, its runner idles while the other still has configs left.
 
-- `evident` reference path: `/Volumes/s2510159/sources/evident` — not mounted
-  on the dev Mac as of 2026-11-15; needed when the sub-job phase starts.
+Each config is already a good unit of work: stable `run_id`, resumable
+(`--resume`, `ckpt/last.pt`), results at a known path. The fix is to make each
+config its own job that any free slot on any runner can take.
 
-## Phase 1: engine = core, front-ends = shims
+Out of scope: the Optuna HPO flow (`hpo_worker.py`); its trial processes pull
+from a shared study and already balance themselves.
 
-| Layer | Owns | Must not |
+## Phase 2 design: coordinators, groups, multi-slot runners
+
+### Job kinds
+
+| Kind | What it is | Where it runs |
 |---|---|---|
-| Engine (`hungngocphat01/tokimeki`) | Data processing, protocol handling, all filesystem reads/writes; returns typed structs with raw units and error codes | Format strings, print, write to `io.Writer` for display |
-| Go CLI (this repo) | Argument parsing, calling the engine, rendering (tables, colors, local time, relative time) | Read or parse state files, parse timestamps from disk |
-| Python package (new) | Submit API (+ maybe status/wait/cancel) for ML scripts, mapping engine results/errors to Python objects/exceptions | Reimplement protocol or registry logic |
+| `compute` (default) | An ordinary job, as today | One of a runner's compute slots |
+| `coordinator` | A script that does no compute: submits compute jobs, polls its group, combines results (e.g. the training driver) | A runner's single coordinator slot |
 
-The engine API must be generic enough for further front-ends.
+- Submit: `tok submit -C/--coordinator script.sh` (`-c` stays `--command`). Without `-C` a job is compute.
+- A coordinator can run on any runner; its children run wherever a compute
+  slot is free. Neither cares where the other runs.
 
-### Return conventions (proposed)
+### Runners
 
-- Timestamps: int64 Unix nanoseconds (`*_ns`); 0 = unset.
-- Durations: seconds (float).
-- Status: enum values, not display strings.
-- Errors: stable error codes front-ends can branch on, plus a message.
-- On-disk JSON format (`meta.json` etc., RFC3339 strings) stays unchanged so
-  mixed-version runners keep working; conversion happens in the engine API.
+```
+tok runner --compute-threads 3
+├─ coordinator slot: at most 1 coordinator   (not counted in --compute-threads)
+└─ compute slots:    up to 3 compute jobs, from any coordinator or the CLI
+```
 
-## Findings: what has to move
+- `--compute-threads` is per runner (e.g. 3 on A100 nodes, 2 elsewhere).
+  Default 1, so a plain `tok runner` behaves like today plus a coordinator slot.
+- Example: 3 nodes, 4 coordinators submitted. Coordinators 1–3 start, one per
+  node; coordinator 4 stays queued until one of them exits. Compute jobs from
+  all running coordinators fill all 9 compute slots.
+- **Implementation (chosen: approach A).** One daemon process with one
+  coordinator slot and N compute slots, each slot its own executor. Each tick
+  fills free slots from the queue. `current.json` becomes one file per running
+  job. `tok runners` still shows one row per node.
+  - Rejected B (one runner process per slot): cheap on the executor, but
+    `tok runners` shows 4 rows per node, and heartbeats, TTL, manner period,
+    kill and stats sampling get duplicated per slot.
 
-- Engine `client/` renders output: `ps.go`, `stats.go`, `top.go`,
-  `workers.go`, `logs.go`, `exec.go`, `shell.go` write formatted text to
-  writers (~89 print calls). → return data; formatting moves to the CLI.
-- CLI TUI reads state directly: `tui/data.go`, `tui/actions.go` read
-  `meta.json`, `queue.json`, `info.json`, heartbeat, `current.json`,
-  `events.ndjson`, `stats.json`. → move behind engine functions.
-- CLI parses timestamps from disk: `cmd/tokimeki/main.go` (~L642 elapsed time),
-  `tui/view.go`. → disappears once the engine returns epochs/seconds.
-- This breaks the engine Go API → engine minor release (e.g. `v0.2.0`) plus a
-  CLI release adopting it via `make bump-engine`.
+### Groups
 
-## Open questions
+- Any job can carry `-g/--group <name>`. A group is a **plain label managed by
+  the user**: there is no `group create`, and a group is "all jobs on disk with
+  that label". Finished jobs stay in it until `tok gc` removes them, so reusing
+  a name means either running `tok gc` first or choosing a fresh one (e.g.
+  `c100-redl-1118`).
+- Jobs a coordinator submits inherit its group (and record it as parent)
+  through the environment, so the training script needs no `-g`. A
+  coordinator submitted without `-g` uses its own job ID as its group.
 
-1. **Python ↔ Go binding**
-   - (a) cgo `c-shared` library + ctypes, JSON across the C boundary. Literal
-     "call Go functions", but needs cgo + per-platform builds (cluster:
-     linux-amd64), and puts a Go runtime inside the training process. The Go
-     runtime is not fork-safe, and training code relies on `multiprocessing`.
-   - (b) Python execs the `tokimeki` binary's regular commands with `--json`
-     (decided 2026-11-15: **no separate `api` command**). Same engine schema
-     for both front-ends, fork-safe, one static binary; costs a process spawn
-     (few ms) per call.
-   - Decided: machine mode = `--json` on normal commands, emitting engine
-     result types + `{"error":{"code","message"}}`. Binding choice (a vs b)
-     for the Python package itself is still open, deferred with Python.
-2. ~~Timestamp unit~~ — decided: int64 Unix ns (`*_ns`), durations float64 seconds (`*_secs`); ns needed to round-trip event timestamps.
-3. Python phase-1 scope: submit only, submit + status/wait/cancel, or
-   read-only parity (`ps`, `logs`, …)?
-4. Ordering: land the version-coupling work first (push engine `b39295a`,
-   tag `v0.1.0`, `make bump-engine V=v0.1.0`, commit CLI)?
+### Coordinator lifecycle
 
-## Status (2026-11-15)
+- **Runner expires or the coordinator crashes:** the engine does nothing
+  special. Children keep running; queued children still start. The
+  coordinator is an ordinary failed/crashed job; its own `--retries` applies.
+- **`tok kill` / `tok cancel` on a coordinator:** also stops its group — queued
+  children are cancelled and running children are killed.
+- **No dedup in the engine.** Before submitting, user code reads the group's
+  state and skips configs that already have a job (matching e.g. `run_id` in
+  `--desc`). This is how a retried coordinator re-attaches.
 
-- Phase 1 (Go refactor: engine core returns typed data, CLI shim, `--json`
-  engine schema) is done on `refactor/engine-core` in both repos.
-- Python front-end remains deferred; open questions 1 (binding a vs b) and 3
-  (scope) above still stand.
-- Release steps (push engine `main`, tag `v0.1.0`/`v0.2.0`, `make
-  bump-engine`) await the user's go-ahead.
-- Engine smoke harness still builds `./cmd/tokimeki`, which only exists in
-  the CLI repo; use `--binary` until fixed.
+### `tok group <id>` (new read path)
+
+- Human output: the `ps` table filtered to the group, with a summary on top
+  (coordinators running, job counts by status, failed list).
+- `--json`: everything — counts by status (coordinators and compute separately),
+  an `active` count (queued + running), the failed list, and every job (the
+  same `Job` type `ps --json` uses).
+- Typical coordinator loop (user code; engine sets no interval):
+  ```
+  expand grid → for each config without a job in the group: submit
+  every 60 s: tok group <g> --json → when active == 0: merge results, exit
+  ```
+
+### Debug logging
+
+- Engine gets debug logs (dequeue decisions, slot fills, kill cascades, group
+  reads, lock waits). They are written only when the front-end enables them;
+  the engine still never prints on its own.
+- CLI: global `--verbose` turns them on for any command, including `tok runner`.
+
+### `evident` under phase 2
+
+```
+tok submit -C -g c100-redl sh/sweep_c100_redl.sh
+  └─ coordinator: python scripts/sweep.py --config configs/.../grid.yaml
+       1. expand grid → one concrete config per run_id   (as today)
+       2. for each run_id not yet in the group:
+            tok submit --desc <run_id> -- train.py --config <run>.yaml --resume
+       3. poll `tok group c100-redl --json` every minute until active == 0
+       4. merge test_results.csv                          (sweep_merge, unchanged)
+runners: tok runner --compute-threads 3   (A100)   /   --compute-threads 2
+```
+
+Sharding into `worker-NNN.yaml` goes away. Until phase 3, the coordinator
+calls `tok ... --json` via subprocess; the Python package later wraps the
+same calls.
+
+### Calls made by Claude (not discussed explicitly; correct if wrong)
+
+1. **Group = the existing `name` field.** `-g/--group` writes `meta.json`'s
+   `name` (so old jobs' tags read as groups); `-n/--name` stays as an alias.
+   `tok group` matches exactly; `ps --name` keeps its substring filter.
+2. **New `meta.json` fields** (all `omitempty`): `kind` (`"coordinator"`;
+   absent = compute) and `parent` (submitting coordinator's job ID).
+   `info.json` gains `compute_threads`.
+3. **Job environment.** The runner exports `TOKIMEKI_HOME`, `TOKIMEKI_JOB_ID`,
+   `TOKIMEKI_GROUP` (and `TOKIMEKI_JOB_KIND`) to every job. `tok submit` uses
+   `TOKIMEKI_GROUP` as the default group and `TOKIMEKI_JOB_ID` as `parent`
+   when they are set.
+4. **Kill/cancel cascade is by group**, not by parent, so it still reaches
+   children submitted by an earlier attempt of a retried coordinator. It runs
+   in the engine `client` and returns what it cancelled/killed; it covers
+   every active job in the group, including ones submitted from the CLI.
+   Order: stop the coordinator first (so it can't submit more), then cancel
+   queued children, then kill running ones.
+5. **Children on a dead runner.** A child whose runner died stays `running`
+   on disk (effective status `stopped`) until that runner ID restarts. The
+   group report counts `stopped` separately and does **not** include it in
+   `active`, so a coordinator never waits forever; user code decides whether
+   to resubmit. The engine does not reap them.
+6. **Scheduling across groups** stays as today: priority, then FIFO. A group
+   submitted first drains first.
+7. **Per-job running state:** `workers/<id>/running/<job_id>.json`
+   (job ID, PID, kind, start time). Crash recovery already marks every job
+   assigned to the runner as crashed; it also clears a legacy `current.json`.
+8. **Stats:** `stats.json` keeps its top-level fields as the node aggregate
+   and gains a per-job list; `tok stats`/`top` show one row per running job.
+9. **`--cpus/--mem` capacity** is checked against the runner's capacity minus
+   what its running jobs already reserve.
+10. **Mixed versions:** old runners don't know job kinds and would run a
+    coordinator in their single slot. A cluster upgrades all runners
+    together. Release as v0.4.0 in both repos.
+
+### Testing
+
+- Unit and integration tests in both repos (multi-slot dequeue under the lock,
+  coordinator slot limit, group report, kill cascade, recovery with several
+  running jobs).
+- Throwaway Docker cluster (shared volume, several runners with different
+  `--compute-threads`, `--verbose` logs), cleaned up afterwards. Scenarios:
+  - 3 runners, 4 coordinators: 4th waits; compute fills all slots.
+  - Kill a coordinator: queued children cancelled, running children killed.
+  - Coordinator crash + `--retries`: children unaffected; retried coordinator
+    re-attaches using the group report and submits only missing configs.
+  - Runner container killed mid-child: child shows `stopped`, `active`
+    excludes it, coordinator finishes.
+  - Runner restart with several running jobs: all marked crashed, retries fire.
+  - `tok gc` then reuse of the group name.
+
+## Phase 3: Python package (deferred)
+
+- Thin shim for training scripts: submit, group status, wait, cancel. No
+  protocol or registry logic of its own.
+- Binding: (a) cgo shared library + ctypes, or (b) exec the `tokimeki` binary
+  with `--json`. Leaning (b): fork-safe with `multiprocessing`, one static
+  binary, same schema as the CLI. Decide when phase 3 starts.
 
 ## Log
 
-- 2026-11-15 — Scoped phase 1; understanding confirmed with user; memo created.
-- 2026-11-15 — Rescoped: phase 1 is the Go refactor only, preserving behavior; Python deferred.
-  Machine output = `--json` on regular commands (no `api` command). Plan written.
-- 2026-11-15 — Phase 1 implemented: engine `client` returns typed results (ns/secs/bytes, coded errors) and
-  never prints; CLI renders from them (goldens unchanged except documented diffs); `--json` emits the
-  engine schema everywhere. Verified side by side with the pre-refactor binary locally and on a two-node
-  Docker setup (scheduling, targeting, exec, cross-node kill, TLS shell).
+- 2026-11-15 — Scoped phase 1; memo created.
+- 2026-11-15 — Rescoped: phase 1 is the Go refactor only; Python deferred.
+  Machine output = `--json` on regular commands (no `api` command).
+- 2026-11-15 — Phase 1 implemented and verified side by side with the
+  pre-refactor binary (local and two-node Docker).
+- 2026-11-18 — Released v0.3.0 in lockstep (engine and CLI).
+- 2026-11-18 — Phase 2 designed with the user: coordinator/compute kinds,
+  one coordinator slot + `--compute-threads` per runner (single daemon, multi
+  slot), plain-label groups, `tok group` read path, cascade on kill/cancel,
+  no engine handling of coordinator crashes, `--verbose` debug logs. Sub-jobs
+  ahead of the Python package.
+- 2026-11-18 — Design approved. `--coordinator` short flag is `-C` (`-c` keeps `--command`). Plan: `tokimeki-engine/docs/superpowers/plans/2026-11-18-coordinators-groups.md`.
