@@ -23,7 +23,7 @@ the following command-line updates:
   takes the next config. Killing or cancelling a coordinator also stops the
   rest of its group. -g/--group replaces -n/--name (still accepted).
 
-* tokimeki runners shows each runner's slot use (JOBS 2/3+C), ps marks
+* tokimeki runners shows each runner's busy compute slots (BUSY 2/3), ps marks
   coordinators with [C], and the TUI lists every job a runner is running.
 
 * --verbose on any command prints the engine's debug log on stderr.

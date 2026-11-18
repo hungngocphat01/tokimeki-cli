@@ -26,17 +26,15 @@ type runnerJob struct {
 	stats *client.StatsSample
 }
 
-// slots renders the runner's slot use, e.g. "2/3+C".
+// slots renders the runner's busy compute slots, e.g. "2/3".
 func (w worker) slots() string {
-	compute, coord := 0, false
+	busy := 0
 	for _, j := range w.jobs {
-		if j.Kind == protocol.KindCoordinator {
-			coord = true
-		} else {
-			compute++
+		if j.Kind != protocol.KindCoordinator {
+			busy++
 		}
 	}
-	return display.RunnerSlots(compute, w.ComputeThreads, coord)
+	return display.RunnerSlots(busy, w.ComputeThreads)
 }
 
 // label renders a running job as "[C] id" for coordinators, "id" otherwise.

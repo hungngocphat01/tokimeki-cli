@@ -237,12 +237,7 @@ func Truncate(s string, n int) string {
 	return s[:n-3] + "..."
 }
 
-// RunnerSlots renders a runner's slot use as "<compute running>/<threads>",
-// with "+C" when its coordinator slot is in use.
-func RunnerSlots(compute, threads int, coordinator bool) string {
-	s := fmt.Sprintf("%d/%d", compute, threads)
-	if coordinator {
-		s += "+C"
-	}
-	return s
+// RunnerSlots renders a runner's busy compute slots as "<busy>/<threads>".
+func RunnerSlots(busy, threads int) string {
+	return fmt.Sprintf("%d/%d", busy, threads)
 }

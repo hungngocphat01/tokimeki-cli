@@ -36,7 +36,7 @@ func printRunners(out io.Writer, runners []client.Runner) error {
 	// because the escape bytes are counted as printable.
 	buf := &strings.Builder{}
 	w := tabwriter.NewWriter(buf, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "WORKER\tHOSTNAME\tPID\tSTARTED\tTTL\tREMAINING\tJOBS\tSTATUS")
+	fmt.Fprintln(w, "WORKER\tHOSTNAME\tPID\tSTARTED\tTTL\tREMAINING\tBUSY\tSTATUS")
 	for _, r := range runners {
 		hostname, pid, started := "?", "?", "?"
 		ttl, remaining := "-", "-"
@@ -76,17 +76,15 @@ func printRunners(out io.Writer, runners []client.Runner) error {
 	return err
 }
 
-// runnerSlots renders the runner's slot use, e.g. "2/3+C".
+// runnerSlots renders the runner's busy compute slots, e.g. "2/3".
 func runnerSlots(r client.Runner) string {
-	compute, coord := 0, false
+	busy := 0
 	for _, j := range r.Running {
-		if j.Kind == protocol.KindCoordinator {
-			coord = true
-		} else {
-			compute++
+		if j.Kind != protocol.KindCoordinator {
+			busy++
 		}
 	}
-	return display.RunnerSlots(compute, r.ComputeThreads, coord)
+	return display.RunnerSlots(busy, r.ComputeThreads)
 }
 
 func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }

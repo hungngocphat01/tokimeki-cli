@@ -530,14 +530,14 @@ func TestTUIRunnerWithTwoJobs(t *testing.T) {
 		t.Fatalf("status = %q, want running", status)
 	}
 	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"JOBS 1/3+C", "[C] coord1", "train1", "CPU 250%", "PROCS 4"} {
+	for _, want := range []string{"BUSY 1/3", "[C] coord1", "train1", "CPU 250%", "PROCS 4"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("stats view missing %q: %s", want, view)
 		}
 	}
 	m.runnerStats = false
 	detail := ansi.Strip(m.renderRunnerDetail(80, 30))
-	for _, want := range []string{"Jobs: 1/3+C", "[C] coord1  PID 11  bash sweep.sh", "train1  PID 12  python train.py"} {
+	for _, want := range []string{"Busy compute slots: 1/3", "[C] coord1  PID 11  bash sweep.sh", "train1  PID 12  python train.py"} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("detail missing %q: %s", want, detail)
 		}

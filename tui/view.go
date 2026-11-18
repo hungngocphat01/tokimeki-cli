@@ -151,7 +151,7 @@ func (m model) runnerStatsLines(width, height int) []string {
 		if i == m.selected[runnersFeature] {
 			marker = "›"
 		}
-		label := fmt.Sprintf(" %s %s  HOST %s  JOBS %s", marker, item.ID, item.Hostname, item.slots())
+		label := fmt.Sprintf(" %s %s  HOST %s  BUSY %s", marker, item.ID, item.Hostname, item.slots())
 		if i == m.selected[runnersFeature] {
 			label = lipgloss.NewStyle().Foreground(accent).Bold(true).Render(fit(label, width))
 		}
@@ -421,7 +421,7 @@ func (m model) renderRunnerDetail(width, height int) string {
 		if selected.HeartbeatNs != 0 {
 			info = append(info, fmt.Sprintf(" Heartbeat: %ds ago", max(0, int(time.Since(time.Unix(0, selected.HeartbeatNs)).Seconds()))))
 		}
-		info = append(info, " Jobs: "+selected.slots())
+		info = append(info, " Busy compute slots: "+selected.slots())
 		if len(selected.jobs) > 0 {
 			label := " Running:"
 			if !selected.Alive {

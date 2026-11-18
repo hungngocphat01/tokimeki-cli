@@ -152,12 +152,11 @@ func TestStatusDisplay(t *testing.T) {
 
 func TestRunnerSlots(t *testing.T) {
 	for _, tc := range []struct {
-		compute, threads int
-		coord            bool
-		want             string
-	}{{0, 1, false, "0/1"}, {2, 3, true, "2/3+C"}, {0, 2, true, "0/2+C"}} {
-		if got := RunnerSlots(tc.compute, tc.threads, tc.coord); got != tc.want {
-			t.Errorf("RunnerSlots(%d, %d, %v) = %q, want %q", tc.compute, tc.threads, tc.coord, got, tc.want)
+		busy, threads int
+		want          string
+	}{{0, 1, "0/1"}, {2, 3, "2/3"}, {3, 3, "3/3"}} {
+		if got := RunnerSlots(tc.busy, tc.threads); got != tc.want {
+			t.Errorf("RunnerSlots(%d, %d) = %q, want %q", tc.busy, tc.threads, got, tc.want)
 		}
 	}
 }

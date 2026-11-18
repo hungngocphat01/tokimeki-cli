@@ -90,7 +90,7 @@ JSON output (`--json`) uses Unix nanosecond timestamps and is timezone-independe
 | `runner` | Start the daemon on this node |
 | `submit` | Queue scripts or an inline command; supports `--live`, `--wait`, `--quiet`, `--json` |
 | `ps` | List running/queued jobs |
-| `runners` | List runners, their slot use (`JOBS 2/3+C`) and heartbeat status |
+| `runners` | List runners, their busy compute slots (`BUSY 2/3`) and heartbeat status |
 | `group <name>` | A group's counts and jobs; `--json` for coordinators to poll |
 | `ls` | `ps` + `runners` together |
 | `top` | One-shot dashboard combining runners + jobs + recent jobs (use `watch -n 3 tok top` for auto-refresh) |
