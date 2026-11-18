@@ -7,7 +7,9 @@
     "version": "v0.1.0",
     "started_at_ns": 1767484800000000000,
     "alive": false,
-    "ttl_secs": 601200
+    "ttl_secs": 601200,
+    "compute_threads": 1,
+    "running_jobs": []
   },
   {
     "worker_id": "w-old",
@@ -15,7 +17,9 @@
     "hostname": "old01",
     "pid": 77,
     "started_at_ns": 1767254400000000000,
-    "alive": false
+    "alive": false,
+    "compute_threads": 1,
+    "running_jobs": []
   }
 ]
 

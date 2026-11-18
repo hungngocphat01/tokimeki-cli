@@ -183,7 +183,7 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 func TestRunnerDetailListShowsOnlyNames(t *testing.T) {
 	m := model{feature: runnersFeature, workers: []worker{
 		{Runner: client.Runner{ID: "idle", HasInfo: true, Hostname: "gpu01", Alive: true}},
-		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true, Current: &client.CurrentJob{JobID: "job1"}}},
+		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true}, Current: &client.CurrentJob{JobID: "job1"}},
 	}}
 	for i, want := range []struct{ label, status string }{
 		{"idle", "idle"},
@@ -217,7 +217,7 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 30,
 		feature: runnersFeature, focus: 1,
 		workers: []worker{
-			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true, Current: &client.CurrentJob{JobID: "job1", PID: 123}},
+			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true}, Current: &client.CurrentJob{JobID: "job1", PID: 123},
 				stats: &client.StatsSample{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUAvailable: true, GPUUtilPercent: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAtNs: time.Now().UnixNano()}},
 			{Runner: client.Runner{ID: "gpu-b", HasInfo: true, Hostname: "node-b", Alive: true}},
 		},

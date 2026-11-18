@@ -59,7 +59,7 @@ func runAction(paths *protocol.Paths, selected job, kind action) actionResult {
 			result.err = fmt.Errorf("killall python exited with code %d", res.ExitCode)
 		}
 	case cancelAction:
-		result.err = c.Cancel(selected.ID)
+		_, result.err = c.Cancel(selected.ID)
 	}
 	return result
 }

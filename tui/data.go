@@ -16,7 +16,8 @@ type job struct {
 
 type worker struct {
 	client.Runner
-	stats *client.StatsSample
+	Current *client.CurrentJob // stopgap: first running job (Task 10 shows all)
+	stats   *client.StatsSample
 }
 
 func (w worker) displayStatus() string {
@@ -53,8 +54,8 @@ func loadSnapshot(paths *protocol.Paths) (snapshot, error) {
 			continue
 		}
 		item := worker{Runner: r}
-		if r.Current != nil && r.Current.JobID == "" {
-			item.Current = nil
+		if len(r.Running) > 0 && r.Running[0].JobID != "" {
+			item.Current = &r.Running[0]
 		}
 		if item.Current != nil {
 			item.stats = freshSample(samples, r.ID, item.Current.JobID)

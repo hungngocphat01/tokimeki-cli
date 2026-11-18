@@ -3,6 +3,7 @@
     "job_id": "a0000007",
     "worker_id": "w-gpu",
     "command": "bash /x/y/z.sh",
+    "kind": "compute",
     "name": "TrainB",
     "status": "queued",
     "effective_status": "queued",
@@ -18,6 +19,7 @@
   {
     "job_id": "a0000006",
     "command": "echo hi",
+    "kind": "compute",
     "status": "queued",
     "effective_status": "queued",
     "exit_code": null,

@@ -132,12 +132,16 @@ func runnerCmd() *cobra.Command {
 	var mannerPeriod time.Duration
 	var ttlText string
 	var capCPUs, capMemMB int
+	var computeThreads int
 
 	cmd := &cobra.Command{
 		Use:   "runner",
 		Short: "Start the runner daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			base := resolveBase()
+			if computeThreads < 1 {
+				return argError("--compute-threads must be at least 1")
+			}
 			var ttl time.Duration
 			if ttlText != "" {
 				var err error
@@ -156,6 +160,7 @@ func runnerCmd() *cobra.Command {
 			d.SetMannerPeriod(mannerPeriod)
 			d.SetTTL(ttl)
 			d.SetCapacity(runner.Capacity{CPUs: capCPUs, MemMB: capMemMB})
+			d.SetComputeThreads(computeThreads)
 			if err := d.Register(); err != nil {
 				return fmt.Errorf("register: %w", err)
 			}
@@ -164,7 +169,7 @@ func runnerCmd() *cobra.Command {
 			if ttl > 0 {
 				ttlLabel = display.TTL(ttl)
 			}
-			log.Printf("Runner %s started (poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), poll, mannerPeriod, ttlLabel, base)
+			log.Printf("Runner %s started (compute_threads=%d, poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), computeThreads, poll, mannerPeriod, ttlLabel, base)
 
 			// Handle graceful shutdown.
 			sigCh := make(chan os.Signal, 1)
@@ -188,6 +193,7 @@ func runnerCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ttlText, "ttl", "", "optional runner lifetime metadata in hours and days (e.g. 6d23h)")
 	cmd.Flags().IntVar(&capCPUs, "capacity-cpus", 0, "available CPU count for capacity-aware scheduling (0 = unconstrained)")
 	cmd.Flags().IntVar(&capMemMB, "capacity-mem-mb", 0, "available memory in MB for capacity-aware scheduling (0 = unconstrained)")
+	cmd.Flags().IntVar(&computeThreads, "compute-threads", 1, "compute jobs to run at once (one coordinator slot is extra)")
 
 	return cmd
 }
@@ -291,7 +297,8 @@ func submitCmd() *cobra.Command {
 	var afterCSV string
 	var priority, cpus, memMB, retries int
 	var backoff string
-	var name, desc string
+	var name, group, desc string
+	var coordinator bool
 	var wait, quiet, asJSON, live bool
 
 	cmd := &cobra.Command{
@@ -301,7 +308,12 @@ func submitCmd() *cobra.Command {
 Use either:
 - a script path argument
 - --command/-c for an inline command
-- -r/--resubmit with a job ID (copies its script and settings; -w targets a runner).`,
+- -r/--resubmit with a job ID (copies its script and settings; -w targets a runner).
+
+-C/--coordinator submits a coordinator: a job that does no compute itself but
+submits compute jobs, polls its group (tok group) and combines results. Each
+runner runs at most one coordinator next to its compute jobs. Jobs submitted
+from inside a job join that job's group unless -g is given.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			if live && (quiet || asJSON) {
@@ -352,6 +364,16 @@ Use either:
 				}
 			}
 			user := os.Getenv("USER")
+			if group != "" && name != "" && group != name {
+				return argError("--group and --name differ")
+			}
+			if group == "" {
+				group = name
+			}
+			kind := ""
+			if coordinator {
+				kind = protocol.KindCoordinator
+			}
 
 			spec := protocol.JobSpec{
 				TargetWorkerID: workerID,
@@ -362,8 +384,9 @@ Use either:
 				User:           user,
 				Retries:        retries,
 				Backoff:        backoff,
-				Name:           name,
+				Name:           group,
 				Desc:           desc,
+				Kind:           kind,
 			}
 
 			if quiet && asJSON {
@@ -497,7 +520,9 @@ Use either:
 	cmd.Flags().IntVar(&memMB, "mem-mb", 0, "required memory in MB (resource hint)")
 	cmd.Flags().IntVar(&retries, "retries", 0, "max retries on failed/crashed (default 0)")
 	cmd.Flags().StringVar(&backoff, "backoff", "", "delay between retries (e.g. 30s, 5m)")
-	cmd.Flags().StringVarP(&name, "name", "n", "", "short tag for grouping/filtering (shared, non-unique)")
+	cmd.Flags().StringVarP(&group, "group", "g", "", "group label (default: $TOKIMEKI_GROUP inside a job)")
+	cmd.Flags().StringVarP(&name, "name", "n", "", "alias of --group")
+	cmd.Flags().BoolVarP(&coordinator, "coordinator", "C", false, "submit a coordinator job (runs in the runner's coordinator slot)")
 	cmd.Flags().StringVar(&desc, "desc", "", "optional free-text description")
 	cmd.Flags().BoolVar(&wait, "wait", false, "block until job reaches a terminal state; exit with the job's exit code")
 	cmd.Flags().BoolVarP(&live, "live", "l", false, "show assignment and stream job output until completion; Ctrl-C leaves the job running")
@@ -886,7 +911,9 @@ only when meta is missing or corrupt).`,
 			if worker != "" {
 				err = c.Kill(worker, jobID, sig, timeout)
 			} else {
-				worker, err = c.KillJob(jobID, sig, timeout)
+				var res client.KillResult
+				res, err = c.KillJob(jobID, sig, timeout)
+				worker = res.Worker
 			}
 			if err != nil {
 				return err
@@ -919,7 +946,7 @@ func cancelCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeJobIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := client.New(resolveBase()).Cancel(args[0]); err != nil {
+			if _, err := client.New(resolveBase()).Cancel(args[0]); err != nil {
 				return err
 			}
 			if asJSON {
