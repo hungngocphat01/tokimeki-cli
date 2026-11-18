@@ -2,7 +2,7 @@ Group exp
 Coordinators: 1 total · 1 stopped
 Compute:      5 total · 1 queued · 1 stopped · 1 completed · 1 failed · 1 crashed
 Failed:       c0000005 (failed, exit 1), c0000006 (crashed)
-Stopped:      c0000001 (stopped), c0000002 (stopped) (runner gone)
+Stopped:      c0000001 (on w-multi), c0000002 (on w-multi) — runner gone
 
 JOB_ID    RUNNER   PID  GROUP  COMMAND                           STARTED              ELAPSED  STATUS
 c0000003  -        -    exp    python train.py --config r2.yaml  -                    -        ◌ queued

@@ -101,7 +101,11 @@ func printGroup(out io.Writer, rep client.GroupReport) error {
 		fmt.Fprintf(out, "Failed:       %s\n", jobList(rep.Failed))
 	}
 	if len(rep.Stopped) > 0 {
-		fmt.Fprintf(out, "Stopped:      %s (runner gone)\n", jobList(rep.Stopped))
+		parts := make([]string, len(rep.Stopped))
+		for i, job := range rep.Stopped {
+			parts[i] = fmt.Sprintf("%s (on %s)", job.ID, job.Worker)
+		}
+		fmt.Fprintf(out, "Stopped:      %s — runner gone\n", strings.Join(parts, ", "))
 	}
 	fmt.Fprintln(out)
 	return printPS(out, rep.Jobs)
