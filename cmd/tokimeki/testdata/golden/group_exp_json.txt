@@ -3,6 +3,7 @@
   "coordinators": {
     "total": 1,
     "active": 0,
+    "retrying": 0,
     "queued": 0,
     "running": 0,
     "stopped": 1,
@@ -14,6 +15,7 @@
   "compute": {
     "total": 5,
     "active": 1,
+    "retrying": 0,
     "queued": 1,
     "running": 0,
     "stopped": 1,

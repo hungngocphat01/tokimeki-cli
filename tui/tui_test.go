@@ -556,6 +556,9 @@ func TestKillCoordinatorActionStopsGroup(t *testing.T) {
 	if err := os.WriteFile(paths.JobMeta("coord001"), meta, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	child, err := c.Submit(protocol.JobSpec{Command: "true", Name: "g"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)

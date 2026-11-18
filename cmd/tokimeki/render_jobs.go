@@ -118,7 +118,7 @@ func groupCounts(g client.GroupCounts) string {
 		n     int
 		label string
 	}{
-		{g.Queued, "queued"}, {g.Running, "running"}, {g.Stopped, "stopped"}, {g.Completed, "completed"},
+		{g.Queued, "queued"}, {g.Running, "running"}, {g.Retrying, "retrying"}, {g.Stopped, "stopped"}, {g.Completed, "completed"},
 		{g.Failed, "failed"}, {g.Killed, "killed"}, {g.Crashed, "crashed"},
 	} {
 		if c.n > 0 {

@@ -285,8 +285,10 @@ until [ "$(tok group "$G" --json | jq .compute.active)" -eq 0 ]; do sleep 60; do
 python merge.py
 ```
 
-`compute.active` counts queued and running compute jobs only, so the
-coordinator never waits on itself. Jobs whose runner died count as `stopped`,
+`compute.active` counts queued, running and retrying compute jobs only, so the
+coordinator never waits on itself. `retrying` is a failed or crashed job whose
+`--retries` allow another attempt that is not visible yet; it keeps the group
+active until the retry shows up. Jobs whose runner died count as `stopped`,
 not active; check `.stopped` if they must be resubmitted.
 
 ### Inspect state
@@ -365,7 +367,10 @@ Kill signal 15 sent to job 3f2a9c01
 Group c100-redl: cancelled 12, killed 3
 ```
 
-A job that could not be stopped is listed on stderr and the command exits 1.
+A job that could not be stopped (for example one on a runner that is no
+longer alive) is listed on stderr and the command exits 1. If the
+coordinator's own runner is dead, the rest of the group is still stopped and
+the command fails with `runner_not_running`.
 
 ### Wait for a job
 
@@ -593,7 +598,7 @@ Every command that takes `--json` prints the engine's result types. Conventions:
 
 **WatchResult:** `status`, `exit_code` (null for killed/crashed jobs without one).
 
-**GroupReport:** `group`, `coordinators` and `compute` (each `{total, active, queued, running, stopped, completed, failed, killed, crashed}`; `active` = queued + running), `failed` (Jobs that failed, crashed or were killed), `stopped` (Jobs running on a dead runner), `jobs` (every Job: active ones in dispatch order, then the rest by submission).
+**GroupReport:** `group`, `coordinators` and `compute` (each `{total, active, retrying, queued, running, stopped, completed, failed, killed, crashed}`; `active` = queued + running + retrying), `failed` (Jobs that failed, crashed or were killed), `stopped` (Jobs running on a dead runner), `jobs` (every Job: active ones in dispatch order, then the rest by submission).
 
 **KillResult:** `job_id`, `worker_id`, `signal`, `cascade` (GroupStop, only for coordinators). **CancelResult:** `job_id`, `cascade`.
 
