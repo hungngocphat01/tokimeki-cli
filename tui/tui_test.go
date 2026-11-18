@@ -543,3 +543,45 @@ func TestTUIRunnerWithTwoJobs(t *testing.T) {
 		}
 	}
 }
+
+func TestKillCoordinatorActionStopsGroup(t *testing.T) {
+	paths := protocol.NewPaths(t.TempDir())
+	c := client.New(paths.Base)
+	for _, dir := range []string{paths.JobDir("coord001"), paths.WorkerInbox("node1"), paths.WorkerOutbox("node1"), paths.TmpDir()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	meta, _ := json.Marshal(protocol.JobMeta{JobID: "coord001", WorkerID: "node1", Status: protocol.StatusRunning, Kind: protocol.KindCoordinator, Name: "g"})
+	if err := os.WriteFile(paths.JobMeta("coord001"), meta, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.Submit(protocol.JobSpec{Command: "true", Name: "g"}, client.SubmitOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			entries, _ := os.ReadDir(paths.WorkerInbox("node1"))
+			for _, e := range entries {
+				data, _ := os.ReadFile(filepath.Join(paths.WorkerInbox("node1"), e.Name()))
+				var req protocol.Request
+				if json.Unmarshal(data, &req) != nil {
+					continue
+				}
+				_ = os.Remove(filepath.Join(paths.WorkerInbox("node1"), e.Name()))
+				response, _ := json.Marshal(protocol.Response{ReqID: req.ReqID, OK: true})
+				_ = os.WriteFile(filepath.Join(paths.WorkerOutbox("node1"), req.ReqID+".resp"), response, 0o644)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	selected := job{Job: client.Job{ID: "coord001", Worker: "node1", Kind: protocol.KindCoordinator, Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}}
+	if result := runAction(paths, selected, killAction); result.err != nil {
+		t.Fatal(result.err)
+	}
+	if _, err := os.Stat(paths.JobDir(child.JobID)); !os.IsNotExist(err) {
+		t.Fatalf("queued child of the killed coordinator still exists: %v", err)
+	}
+}
