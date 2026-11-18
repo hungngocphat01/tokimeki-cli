@@ -6,7 +6,7 @@ Usage:
 
 Flags:
   -h, --help   help for cancel
-      --json   print {job_id} as JSON
+      --json   print {job_id, cascade} as JSON
 
 Global Flags:
       --base string   base directory for state (default: ~/.tokimeki)

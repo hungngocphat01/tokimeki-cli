@@ -936,32 +936,37 @@ only when meta is missing or corrupt).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			jobID := args[0]
-			var err error
-			if worker != "" {
-				err = c.Kill(worker, jobID, sig, timeout)
-			} else {
-				var res client.KillResult
-				res, err = c.KillJob(jobID, sig, timeout)
-				worker = res.Worker
-			}
-			if err != nil {
-				return err
-			}
 			if sig == 0 {
 				sig = 15
 			}
-			if asJSON {
-				return writeJSON(map[string]any{"job_id": jobID, "worker_id": worker, "signal": sig})
+			var res client.KillResult
+			if worker != "" {
+				if err := c.Kill(worker, jobID, sig, timeout); err != nil {
+					return err
+				}
+				res = client.KillResult{JobID: jobID, Worker: worker, Signal: sig}
+			} else {
+				var err error
+				if res, err = c.KillJob(jobID, sig, timeout); err != nil {
+					return err
+				}
 			}
-			fmt.Printf("Kill signal %d sent to job %s\n", sig, jobID)
-			return nil
+			if asJSON {
+				if err := writeJSON(res); err != nil {
+					return err
+				}
+			} else {
+				fmt.Printf("Kill signal %d sent to job %s\n", sig, jobID)
+				printGroupStop(res.Cascade)
+			}
+			return cascadeExit(cmd, res.Cascade)
 		},
 	}
 
 	cmd.Flags().IntVar(&sig, "signal", 15, "signal number to send")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().StringVar(&worker, "worker", "", "explicit worker ID (override meta lookup)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, worker_id, signal} as JSON")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, worker_id, signal, cascade} as JSON")
 	return cmd
 }
 
@@ -975,18 +980,44 @@ func cancelCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeJobIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if _, err := client.New(resolveBase()).Cancel(args[0]); err != nil {
+			res, err := client.New(resolveBase()).Cancel(args[0])
+			if err != nil {
 				return err
 			}
 			if asJSON {
-				return writeJSON(map[string]string{"job_id": args[0]})
+				if err := writeJSON(res); err != nil {
+					return err
+				}
+			} else {
+				fmt.Printf("Canceled queued job %s\n", args[0])
+				printGroupStop(res.Cascade)
 			}
-			fmt.Printf("Canceled queued job %s\n", args[0])
-			return nil
+			return cascadeExit(cmd, res.Cascade)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id} as JSON")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, cascade} as JSON")
 	return cmd
+}
+
+// printGroupStop reports what stopping a coordinator's group did.
+func printGroupStop(stop *client.GroupStop) {
+	if stop == nil {
+		return
+	}
+	fmt.Printf("Group %s: cancelled %d, killed %d\n", stop.Group, len(stop.Cancelled), len(stop.Killed))
+	for _, f := range stop.Failures {
+		fmt.Fprintf(os.Stderr, "  could not stop %s: %s\n", f.JobID, f.Message)
+	}
+}
+
+// cascadeExit makes the command exit 1 when part of a group could not be
+// stopped. The result was already printed, so the error itself is silent.
+func cascadeExit(cmd *cobra.Command, stop *client.GroupStop) error {
+	if stop == nil || len(stop.Failures) == 0 {
+		return nil
+	}
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	return errSilentExit
 }
 
 // --- logs ---

@@ -21,13 +21,16 @@ func execute(args []string) int {
 		silence(root)
 	}
 	if _, err := root.ExecuteC(); err != nil {
-		if jsonMode {
+		if jsonMode && !errors.Is(err, errSilentExit) {
 			writeJSONError(err)
 		}
 		return 1
 	}
 	return 0
 }
+
+// errSilentExit makes a command exit 1 after it already printed its result.
+var errSilentExit = errors.New("exit 1")
 
 func hasJSONFlag(args []string) bool {
 	for _, arg := range args {

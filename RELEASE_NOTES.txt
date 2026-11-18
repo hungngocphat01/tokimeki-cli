@@ -5,6 +5,29 @@ Hello,
 A new Tokimeki CLI binary for Linux amd64 is available. This build contains
 the following command-line updates:
 
+* Runners can run several jobs at once (v0.4.0):
+    tokimeki runner --compute-threads 3
+
+  The runner runs up to 3 ordinary (compute) jobs side by side, plus one
+  coordinator job. Upgrade every runner that shares a TOKIMEKI_HOME at the
+  same time: older runners do not know about coordinators.
+
+* Coordinator jobs and groups:
+    tokimeki submit -C -g my-sweep sweep.sh
+    tokimeki group my-sweep
+    tokimeki group my-sweep --json
+
+  A coordinator does no compute itself. It submits one job per config (they
+  join its group automatically), polls "tokimeki group --json" until
+  compute.active is 0, then combines the results. Any free slot on any runner
+  takes the next config. Killing or cancelling a coordinator also stops the
+  rest of its group. -g/--group replaces -n/--name (still accepted).
+
+* tokimeki runners shows each runner's slot use (JOBS 2/3+C), ps marks
+  coordinators with [C], and the TUI lists every job a runner is running.
+
+* --verbose on any command prints the engine's debug log on stderr.
+
 * Submit several scripts in one command:
     tokimeki submit script1.sh script2.sh
 

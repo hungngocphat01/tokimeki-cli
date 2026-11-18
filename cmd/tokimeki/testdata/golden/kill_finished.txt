@@ -6,7 +6,7 @@ Usage:
 
 Flags:
   -h, --help               help for kill
-      --json               print {job_id, worker_id, signal} as JSON
+      --json               print {job_id, worker_id, signal, cascade} as JSON
       --signal int         signal number to send (default 15)
       --timeout duration   response timeout (default 30s)
       --worker string      explicit worker ID (override meta lookup)

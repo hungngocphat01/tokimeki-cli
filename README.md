@@ -134,17 +134,18 @@ For a complete usage guide with examples, flags, and recipes (dependencies, retr
 
 Commands at a glance:
 
-- `tokimeki runner`: start a runner daemon on the current node
+- `tokimeki runner`: start a runner daemon on the current node (`--compute-threads N` runs N compute jobs plus one coordinator)
 - `tokimeki runners`: list known runners and their liveness
 - `tokimeki ps` / `ls`: inspect queued and running jobs
 - `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
-- `tokimeki submit`: submit scripts or an inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--name`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
+- `tokimeki submit`: submit scripts or an inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `-g/--group`, `-C/--coordinator`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
+- `tokimeki group <name>`: a group's counts and jobs (`--json` for coordinator scripts)
 - `tokimeki watch <job>`: block until terminal state; exit code = job's exit code
 - `tokimeki shell <node>`: open a full interactive terminal on a runner (uses TCP)
 - `tokimeki exec` (`-i` for interactive): run a one-off command on a target runner
 - `tokimeki kp <node>`: run `killall python` on a target runner
-- `tokimeki kill`: stop the currently running job on a runner
-- `tokimeki cancel`: cancel a queued job
+- `tokimeki kill`: signal a running job (a coordinator also stops its group)
+- `tokimeki cancel`: cancel a queued job (a coordinator also stops its group)
 - `tokimeki logs`: show stdout and stderr for a job (`--follow`, `--tail`, `--stdout`, `--stderr`)
 - `tokimeki job`: show job metadata
 - `tokimeki events`: stream the shared event log
