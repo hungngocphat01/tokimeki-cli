@@ -202,3 +202,14 @@ same calls.
   no engine handling of coordinator crashes, `--verbose` debug logs. Sub-jobs
   ahead of the Python package.
 - 2026-11-18 — Design approved. `--coordinator` short flag is `-C` (`-c` keeps `--command`). Plan: `tokimeki-engine/docs/superpowers/plans/2026-11-18-coordinators-groups.md`.
+- 2026-11-18 — Phase 2 implemented on `feat/coordinators` (engine + CLI). Docker
+  cluster test (3 runners: `--compute-threads` 3/2/2, shared volume,
+  `--verbose`), all PASS: 4 coordinators on 3 runners (≤1 coordinator per
+  runner, compute ≤ threads, all 7 slots used, 4th waits); kill coordinator
+  (4 queued cancelled, 6 running killed, other group untouched); coordinator
+  `--retries` re-attaches (6 distinct descs, children from both attempts);
+  `docker kill` a runner mid-child (2 `stopped`, not active, coordinator
+  finishes; restart → 2 crashed + retried to completion); `gc` then reuse a
+  group name; per-job stats (3 busy jobs, 3 samples); stress 3×40 short jobs
+  (120 starts, no double runs, no leaks). Found and fixed: cascade must cancel
+  queued before killing running; TUI kill bypassed the cascade.
