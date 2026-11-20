@@ -308,6 +308,44 @@ report. A coordinator can wait on its own group.`,
 	return cmd
 }
 
+// --- report ---
+
+func reportCmd() *cobra.Command {
+	var jobID, fromJSON string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "report --from-json FILE|-",
+		Short: "Record a running job's result or error",
+		Long: `Record what a running job produced, from a JSON object with exactly one of
+"result" (any JSON value; read back with tok result) or "error"
+({"stage", "type", "message", "traceback"}; shown on the failed job).
+Inside a job the job ID comes from $TOKIMEKI_JOB_ID; --job names another.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if fromJSON == "" {
+				return argError("report requires --from-json FILE (or - for stdin)")
+			}
+			rep, err := client.ReadJobReport(fromJSON, os.Stdin)
+			if err != nil {
+				return err
+			}
+			res, err := client.New(resolveBase()).Report(jobID, rep)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return writeJSON(res)
+			}
+			fmt.Printf("Recorded %s for job %s\n", res.Kind, res.JobID)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&jobID, "job", "", "job to report for (default $TOKIMEKI_JOB_ID)")
+	cmd.Flags().StringVar(&fromJSON, "from-json", "", "read the report from a JSON file (- for stdin)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, kind} as JSON")
+	return cmd
+}
+
 // --- result ---
 
 func resultCmd() *cobra.Command {

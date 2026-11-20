@@ -248,3 +248,26 @@ func TestResubmitRejectsFromJSON(t *testing.T) {
 		t.Fatalf("exit %d %q", code, out)
 	}
 }
+
+func TestReportFromJSON(t *testing.T) {
+	base := copyFixture(t)
+	// c0000001 is running (on a dead runner) in the fixture.
+	t.Setenv(protocol.EnvJobID, "c0000001")
+	out, errOut, code := runFull(t, base, `{"result": {"merged": 10}}`, "report", "--from-json", "-", "--json")
+	var res client.ReportResult
+	if code != 0 || json.Unmarshal([]byte(out), &res) != nil || res != (client.ReportResult{JobID: "c0000001", Kind: "result"}) {
+		t.Fatalf("exit %d out %q err %q", code, out, errOut)
+	}
+	out, _, code = runFull(t, base, "", "result", "c0000001", "--json")
+	if code != 0 || out != `{"merged":10}`+"\n" {
+		t.Fatalf("result: exit %d %q", code, out)
+	}
+	out, _, code = runFull(t, base, `{"result": 1}`, "report", "--job", "a0000001", "--from-json", "-", "--json")
+	if gotCode, _ := errorEnvelope(t, out); code != 1 || gotCode != "invalid_state" {
+		t.Fatalf("finished job: exit %d %q", code, out)
+	}
+	out, _, code = runFull(t, base, "", "report", "--json")
+	if gotCode, _ := errorEnvelope(t, out); code != 1 || gotCode != "invalid_argument" {
+		t.Fatalf("missing --from-json: exit %d %q", code, out)
+	}
+}
