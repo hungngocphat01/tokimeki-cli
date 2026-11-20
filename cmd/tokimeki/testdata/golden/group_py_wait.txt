@@ -1,0 +1,13 @@
+Group py
+Coordinators: 0 total
+Compute:      2 total · 1 completed · 1 failed
+Failed:       p0000002 (failed, exit 2, ModuleNotFoundError)
+
+JOB_ID    RUNNER  PID  GROUP  COMMAND                                 STARTED              ELAPSED  STATUS
+p0000001  w-gpu   -    py     python-uv evident.train:run_experiment  2026-01-05 12:20:05  30m      ✓ completed
+p0000002  w-gpu   -    py     python-uv evident.train:run_experiment  2026-01-05 12:20:06  0m       ✗ failed
+
+--stderr--
+
+--err--
+<nil>

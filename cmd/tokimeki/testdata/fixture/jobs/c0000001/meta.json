@@ -1,0 +1,18 @@
+{
+  "schema": 2,
+  "job_id": "c0000001",
+  "worker_id": "w-multi",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "bash sweep.sh"
+  },
+  "status": "running",
+  "submitted_at": "2026-01-05T12:09:00Z",
+  "started_at": "garbage",
+  "finished_at": null,
+  "exit_code": null,
+  "name": "exp",
+  "kind": "coordinator",
+  "attempts": 1
+}

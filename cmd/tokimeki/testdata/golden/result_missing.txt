@@ -1,0 +1,17 @@
+
+--stderr--
+Error: job a0000001 has no result
+Usage:
+  tok result <job_id> [flags]
+
+Flags:
+  -h, --help   help for result
+      --json   print the result as compact JSON
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+      --verbose       print engine debug logs on stderr (warnings are always printed)
+
+
+--err--
+job a0000001 has no result

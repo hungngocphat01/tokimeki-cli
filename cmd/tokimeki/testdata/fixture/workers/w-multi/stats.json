@@ -1,0 +1,3 @@
+{"worker_id":"w-multi","cpu_percent":250,"rss_bytes":3221225472,"sampled_at":"2026-01-05T12:20:00Z","note":"stats: nvidia-smi not found; GPU stats disabled",
+ "jobs":[{"worker_id":"w-multi","job_id":"c0000001","pid":901,"cpu_percent":1,"rss_bytes":52428800,"num_procs":1,"sampled_at":"2026-01-05T12:20:00Z","note":"stats: nvidia-smi not found; GPU stats disabled"},
+         {"worker_id":"w-multi","job_id":"c0000002","pid":902,"cpu_percent":249,"rss_bytes":3169845248,"num_procs":4,"sampled_at":"2026-01-05T12:20:00Z","note":"stats: nvidia-smi not found; GPU stats disabled"}]}

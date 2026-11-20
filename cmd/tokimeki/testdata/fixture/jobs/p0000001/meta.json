@@ -1,0 +1,22 @@
+{
+  "schema": 2,
+  "job_id": "p0000001",
+  "worker_id": "w-gpu",
+  "execute": {
+    "abi": 2,
+    "type": "python-uv",
+    "label": "python-uv evident.train:run_experiment",
+    "entry": "evident.train:run_experiment",
+    "project": "/home/u/evident",
+    "cwd": "/home/u/evident",
+    "arg": {"run_id": "lr0.01-s1", "lr": 0.01, "seed": 1}
+  },
+  "status": "completed",
+  "submitted_at": "2026-01-05T12:20:00Z",
+  "started_at": "2026-01-05T12:20:05Z",
+  "finished_at": "2026-01-05T12:50:05Z",
+  "exit_code": 0,
+  "name": "py",
+  "desc": "lr0.01-s1",
+  "attempts": 1
+}

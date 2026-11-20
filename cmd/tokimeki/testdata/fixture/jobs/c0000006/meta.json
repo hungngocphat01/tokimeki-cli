@@ -1,0 +1,19 @@
+{
+  "schema": 2,
+  "job_id": "c0000006",
+  "worker_id": "w-old",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "python train.py --config r5.yaml"
+  },
+  "status": "crashed",
+  "submitted_at": "2026-01-05T12:09:50Z",
+  "started_at": "2026-01-05T12:10:00Z",
+  "finished_at": "2026-01-05T12:11:00Z",
+  "exit_code": 1,
+  "name": "exp",
+  "desc": "r5",
+  "parent": "c0000001",
+  "attempts": 1
+}

@@ -47,7 +47,8 @@ func runAction(paths *protocol.Paths, selected job, kind action) actionResult {
 			result.err = fmt.Errorf("job is no longer running")
 			break
 		}
-		result.err = c.Kill(selected.Worker, selected.ID, 15, 30*time.Second)
+		// KillJob also stops the group when the job is a coordinator.
+		_, result.err = c.KillJob(selected.ID, 15, 30*time.Second)
 	case pythonAction:
 		if selected.Status != protocol.StatusRunning || selected.Worker == "" {
 			result.err = fmt.Errorf("job is no longer running")
@@ -59,7 +60,7 @@ func runAction(paths *protocol.Paths, selected job, kind action) actionResult {
 			result.err = fmt.Errorf("killall python exited with code %d", res.ExitCode)
 		}
 	case cancelAction:
-		result.err = c.Cancel(selected.ID)
+		_, result.err = c.Cancel(selected.ID)
 	}
 	return result
 }

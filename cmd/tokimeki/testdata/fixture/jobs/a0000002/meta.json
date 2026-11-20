@@ -1,7 +1,12 @@
 {
+  "schema": 2,
   "job_id": "a0000002",
   "worker_id": "w-gpu",
-  "command": "python3 -u /home/u/exp/eval.py --epochs 5",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "python3 -u /home/u/exp/eval.py --epochs 5"
+  },
   "status": "failed",
   "submitted_at": "2026-01-05T10:10:00Z",
   "started_at": "2026-01-05T11:24:00Z",

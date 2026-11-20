@@ -1,6 +1,7 @@
-WORKER  HOSTNAME  PID   STARTED              TTL     REMAINING  STATUS
-w-gpu   gpu01     4242  2026-01-04 00:00:00  6d 23h  -          ○ stopped
-w-old   old01     77    2026-01-01 08:00:00  -       -          ○ stopped
+WORKER   HOSTNAME  PID   STARTED              TTL     REMAINING  BUSY  STATUS
+w-gpu    gpu01     4242  2026-01-04 00:00:00  6d 23h  -          0/1   ○ stopped
+w-multi  gpu03     900   2026-01-05 12:00:00  -       -          1/3   ○ stopped
+w-old    old01     77    2026-01-01 08:00:00  -       -          0/1   ○ stopped
 
 --stderr--
 

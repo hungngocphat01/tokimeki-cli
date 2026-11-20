@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/hungngocphat01/tokimeki/client"
+	"github.com/hungngocphat01/tokimeki/protocol"
 	"github.com/ngocphat/tokimeki-cli/display"
 )
 
@@ -35,7 +36,7 @@ func printRunners(out io.Writer, runners []client.Runner) error {
 	// because the escape bytes are counted as printable.
 	buf := &strings.Builder{}
 	w := tabwriter.NewWriter(buf, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(w, "WORKER\tHOSTNAME\tPID\tSTARTED\tTTL\tREMAINING\tSTATUS")
+	fmt.Fprintln(w, "WORKER\tHOSTNAME\tPID\tSTARTED\tTTL\tREMAINING\tBUSY\tSTATUS")
 	for _, r := range runners {
 		hostname, pid, started := "?", "?", "?"
 		ttl, remaining := "-", "-"
@@ -50,8 +51,8 @@ func printRunners(out io.Writer, runners []client.Runner) error {
 				remaining = display.TTL(secs(*r.RemainingSecs))
 			}
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			r.ID, hostname, pid, started, ttl, remaining, display.StatusDisplay(runnerStatus(r), false))
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			r.ID, hostname, pid, started, ttl, remaining, runnerSlots(r), display.StatusDisplay(runnerStatus(r), false))
 	}
 	if err := w.Flush(); err != nil {
 		return err
@@ -73,6 +74,17 @@ func printRunners(out io.Writer, runners []client.Runner) error {
 	}
 	_, err := fmt.Fprintln(out, strings.Join(lines, "\n"))
 	return err
+}
+
+// runnerSlots renders the runner's busy compute slots, e.g. "2/3".
+func runnerSlots(r client.Runner) string {
+	busy := 0
+	for _, j := range r.Running {
+		if j.Kind != protocol.KindCoordinator {
+			busy++
+		}
+	}
+	return display.RunnerSlots(busy, r.ComputeThreads)
 }
 
 func secs(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }

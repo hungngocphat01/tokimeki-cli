@@ -1,0 +1,18 @@
+Group exp
+Coordinators: 1 total · 1 stopped
+Compute:      5 total · 1 queued · 1 stopped · 1 completed · 1 failed · 1 crashed
+Failed:       c0000005 (failed, exit 1), c0000006 (crashed)
+Stopped:      c0000001 (on w-multi), c0000002 (on w-multi) — runner gone
+
+JOB_ID    RUNNER   PID  GROUP  COMMAND                           STARTED              ELAPSED  STATUS
+c0000003  -        -    exp    python train.py --config r2.yaml  -                    -        ◌ queued
+c0000001  w-multi  901  exp    [C] bash sweep.sh                 -                    -        ○ stopped
+c0000002  w-multi  902  exp    python train.py --config r1.yaml  -                    -        ○ stopped
+c0000004  w-gpu    -    exp    python train.py --config r3.yaml  2026-01-05 12:10:00  5m       ✓ completed
+c0000005  w-gpu    -    exp    python train.py --config r4.yaml  2026-01-05 12:10:00  2m       ✗ failed
+c0000006  w-old    -    exp    python train.py --config r5.yaml  2026-01-05 12:10:00  1m       ‡ crashed
+
+--stderr--
+
+--err--
+<nil>

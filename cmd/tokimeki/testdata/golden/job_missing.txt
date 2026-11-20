@@ -10,6 +10,7 @@ Flags:
 
 Global Flags:
       --base string   base directory for state (default: ~/.tokimeki)
+      --verbose       print engine debug logs on stderr (warnings are always printed)
 
 
 --err--

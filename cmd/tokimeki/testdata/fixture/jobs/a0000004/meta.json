@@ -1,7 +1,12 @@
 {
+  "schema": 2,
   "job_id": "a0000004",
   "worker_id": "w-old",
-  "command": "echo crash",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "echo crash"
+  },
   "status": "crashed",
   "submitted_at": "2026-01-05T10:30:00Z",
   "started_at": "2026-01-05T10:31:00Z",

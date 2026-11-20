@@ -1,0 +1,131 @@
+{
+  "group": "py",
+  "coordinators": {
+    "total": 0,
+    "active": 0,
+    "retrying": 0,
+    "queued": 0,
+    "running": 0,
+    "stopped": 0,
+    "completed": 0,
+    "failed": 0,
+    "killed": 0,
+    "crashed": 0
+  },
+  "compute": {
+    "total": 2,
+    "active": 0,
+    "retrying": 0,
+    "queued": 0,
+    "running": 0,
+    "stopped": 0,
+    "completed": 1,
+    "failed": 1,
+    "killed": 0,
+    "crashed": 0
+  },
+  "failed": [
+    {
+      "job_id": "p0000002",
+      "worker_id": "w-gpu",
+      "execute": {
+        "abi": 2,
+        "type": "python-uv",
+        "label": "python-uv evident.train:run_experiment",
+        "entry": "evident.train:run_experiment",
+        "project": "/home/u/evident",
+        "cwd": "/home/u/evident",
+        "arg": {
+          "run_id": "lr0.1-s1",
+          "lr": 0.1,
+          "seed": 1
+        }
+      },
+      "kind": "compute",
+      "name": "py",
+      "desc": "lr0.1-s1",
+      "status": "failed",
+      "effective_status": "failed",
+      "exit_code": 2,
+      "attempts": 1,
+      "submitted_at_ns": 1767615601000000000,
+      "started_at_ns": 1767615606000000000,
+      "finished_at_ns": 1767615609000000000,
+      "elapsed_secs": 3,
+      "error": {
+        "stage": "load",
+        "type": "ModuleNotFoundError",
+        "message": "No module named 'evident'"
+      }
+    }
+  ],
+  "stopped": [],
+  "jobs": [
+    {
+      "job_id": "p0000001",
+      "worker_id": "w-gpu",
+      "execute": {
+        "abi": 2,
+        "type": "python-uv",
+        "label": "python-uv evident.train:run_experiment",
+        "entry": "evident.train:run_experiment",
+        "project": "/home/u/evident",
+        "cwd": "/home/u/evident",
+        "arg": {
+          "run_id": "lr0.01-s1",
+          "lr": 0.01,
+          "seed": 1
+        }
+      },
+      "kind": "compute",
+      "name": "py",
+      "desc": "lr0.01-s1",
+      "status": "completed",
+      "effective_status": "completed",
+      "exit_code": 0,
+      "attempts": 1,
+      "submitted_at_ns": 1767615600000000000,
+      "started_at_ns": 1767615605000000000,
+      "finished_at_ns": 1767617405000000000,
+      "elapsed_secs": 1800
+    },
+    {
+      "job_id": "p0000002",
+      "worker_id": "w-gpu",
+      "execute": {
+        "abi": 2,
+        "type": "python-uv",
+        "label": "python-uv evident.train:run_experiment",
+        "entry": "evident.train:run_experiment",
+        "project": "/home/u/evident",
+        "cwd": "/home/u/evident",
+        "arg": {
+          "run_id": "lr0.1-s1",
+          "lr": 0.1,
+          "seed": 1
+        }
+      },
+      "kind": "compute",
+      "name": "py",
+      "desc": "lr0.1-s1",
+      "status": "failed",
+      "effective_status": "failed",
+      "exit_code": 2,
+      "attempts": 1,
+      "submitted_at_ns": 1767615601000000000,
+      "started_at_ns": 1767615606000000000,
+      "finished_at_ns": 1767615609000000000,
+      "elapsed_secs": 3,
+      "error": {
+        "stage": "load",
+        "type": "ModuleNotFoundError",
+        "message": "No module named 'evident'"
+      }
+    }
+  ]
+}
+
+--stderr--
+
+--err--
+<nil>

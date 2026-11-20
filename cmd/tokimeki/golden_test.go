@@ -40,7 +40,7 @@ var goldenCases = []struct {
 	{name: "logs", args: []string{"logs", "a0000001"}},
 	{name: "logs_tail", args: []string{"logs", "-n", "2", "a0000001"}},
 	{name: "logs_stderr", args: []string{"logs", "--stderr", "a0000001"}},
-	{name: "logs_index", args: []string{"logs", "-5"}},
+	{name: "logs_index", args: []string{"logs", "-13"}},
 	{name: "logs_missing", args: []string{"logs", "nope"}},
 	{name: "events", args: []string{"events"}},
 	{name: "events_json", args: []string{"events", "--json"}},
@@ -54,6 +54,17 @@ var goldenCases = []struct {
 	{name: "cancel_finished", args: []string{"cancel", "a0000001"}},
 	{name: "kill_finished", args: []string{"kill", "a0000001"}},
 	{name: "kill_queued", args: []string{"kill", "a0000006"}},
+	{name: "group_exp", args: []string{"group", "exp"}},
+	{name: "group_exp_json", args: []string{"group", "exp", "--json"}},
+	{name: "group_missing", args: []string{"group", "nope"}},
+	{name: "ps_group", args: []string{"ps", "-a", "--name", "exp"}},
+	{name: "group_py", args: []string{"group", "py"}},
+	{name: "group_py_json", args: []string{"group", "py", "--json"}},
+	{name: "group_py_wait", args: []string{"group", "py", "--wait", "--poll", "10ms"}},
+	{name: "job_python", args: []string{"job", "p0000002"}},
+	{name: "result", args: []string{"result", "p0000001"}},
+	{name: "result_json", args: []string{"result", "p0000001", "--json"}},
+	{name: "result_missing", args: []string{"result", "a0000001"}},
 }
 
 func TestGolden(t *testing.T) {

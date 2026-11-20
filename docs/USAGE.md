@@ -9,6 +9,7 @@ CLI reference and recipes for the `tokimeki` binary. See `README.md` for archite
 - [Commands by use case](#commands-by-use-case)
   - [Run a runner](#run-a-runner)
   - [Submit work](#submit-work)
+  - [Coordinators and groups](#coordinators-and-groups)
   - [Inspect state](#inspect-state)
   - [Control running jobs](#control-running-jobs)
   - [Wait for a job](#wait-for-a-job)
@@ -22,9 +23,12 @@ CLI reference and recipes for the `tokimeki` binary. See `README.md` for archite
   - [Resource hints (`--cpus`, `--mem-mb`)](#resource-hints---cpus---mem-mb)
   - [Retries (`--retries`, `--backoff`)](#retries---retries---backoff)
 - [JSON output](#json-output)
+  - [Notices](#notices)
 - [Event log](#event-log)
 - [Shell completion](#shell-completion)
 - [Environment and configuration](#environment-and-configuration)
+  - [Job environment](#job-environment)
+  - [Jobs from older versions](#jobs-from-older-versions)
 
 ---
 
@@ -89,17 +93,19 @@ JSON output (`--json`) uses Unix nanosecond timestamps and is timezone-independe
 | `runner` | Start the daemon on this node |
 | `submit` | Queue scripts or an inline command; supports `--live`, `--wait`, `--quiet`, `--json` |
 | `ps` | List running/queued jobs |
-| `runners` | List runners and heartbeat status |
+| `runners` | List runners, their busy compute slots (`BUSY 2/3`) and heartbeat status |
+| `group <name>` | A group's counts and jobs; `--json` for coordinators to poll, `--wait` to block until its jobs finish |
 | `ls` | `ps` + `runners` together |
 | `top` | One-shot dashboard combining runners + jobs + recent jobs (use `watch -n 3 tok top` for auto-refresh) |
 | `stats` | Snapshot of CPU/RAM/GPU usage across all running jobs |
 | `tui` | Interactive active jobs, live logs, and resource usage |
 | `job <id>` | Show full job metadata + script |
+| `result <id>` | Print the result a job wrote (JSON) |
 | `logs <id>` | Print stdout/stderr (with `--follow`, `--tail`) |
 | `watch <id>` | Block until terminal state; exit code = job's exit code |
 | `events` | Stream the shared event log |
-| `kill <job_id>` | Send signal to a running job (auto-resolves runner) |
-| `cancel` | Remove a queued job |
+| `kill <job_id>` | Send signal to a running job (auto-resolves runner); a coordinator also stops its group |
+| `cancel` | Remove a queued job; a coordinator also stops its group |
 | `shell <node>` | Open a full interactive terminal on a runner (uses TCP) |
 | `exec` | Run an ad-hoc command on a runner |
 | `kp <node>` | Run `killall python` on a runner |
@@ -107,7 +113,11 @@ JSON output (`--json`) uses Unix nanosecond timestamps and is timezone-independe
 | `version` | Build/version info |
 | `completion` | Generate shell completion |
 
-Every command accepts `--base PATH` to override `TOKIMEKI_HOME`.
+Every command accepts `--base PATH` to override `TOKIMEKI_HOME`, and
+`--verbose` to print the engine's debug log on stderr (dequeue decisions, slot
+fills, kills, group reads). `tok --verbose runner` logs scheduling as it
+happens. Warnings (e.g. [jobs from before v0.5.0](#jobs-from-older-versions))
+are printed on stderr with or without `--verbose`.
 
 ### Interactive dashboard (`tok tui`)
 
@@ -154,7 +164,8 @@ Flags:
 - `--manner-period`: exit cleanly after being jobless this long. `0` disables.
 - `--ttl`: optional expected runner lifetime in whole hours and days, such as `7d`, `1h`, `6d23h`, or `25h`. This is tracking metadata; it does not stop the runner or change the manner period.
 - `--capacity-cpus N`: free CPUs available for capacity-aware scheduling. `0` = unconstrained.
-- `--capacity-mem-mb M`: free memory MB. `0` = unconstrained.
+- `--capacity-mem-mb M`: free memory MB. `0` = unconstrained. Both capacities are checked against what the runner's running jobs already reserve.
+- `--compute-threads N`: how many compute jobs run at once (default 1). A runner also has one coordinator slot on top of these, so `--compute-threads 3` runs up to 3 compute jobs and 1 coordinator.
 
 **When to set capacity**: when multiple runners share a node or you want to refuse jobs that don't fit. Otherwise leave at 0.
 
@@ -197,6 +208,53 @@ tokimeki submit -r -w w-gpu01 abc12345
 
 All scheduling flags are stackable on submit: `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`. See [scheduling features](#scheduling-features).
 
+`-g/--group NAME` labels the job with a group (`-n/--name` is the same field). `-C/--coordinator` submits a coordinator; see [Coordinators and groups](#coordinators-and-groups).
+
+#### Submit from JSON (`--from-json`)
+
+Every command that takes its arguments as JSON uses `--from-json FILE`;
+`--from-json -` reads the JSON from stdin. For `submit`, the JSON is one job:
+
+```bash
+tok submit --from-json job.json
+echo '{"abi": 2, "type": "bash", "script_file": "train.sh", "group": "g"}' | tok submit --from-json - --json
+```
+
+```json
+{
+  "abi": 2,
+  "type": "python-uv",
+  "entry": "evident.train:run_experiment",
+  "project": "/home/u/evident",
+  "cwd": "/home/u/evident",
+  "arg": {"run_id": "lr0.01-s1", "lr": 0.01},
+  "group": "c100-redl",
+  "desc": "lr0.01-s1",
+  "retries": 1
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `abi` | Required, `2`. |
+| `type` | Required: `bash` or `python-uv`. |
+| `script_file` | `bash`: the script to run (it is copied at submit). Scripts are never written inline in the JSON; use `-c` for a one-line command. |
+| `entry` | `python-uv`: `module:function` or `/abs/path/file.py:function`. |
+| `project` | `python-uv`: the uv project (where `pyproject.toml` is). Default: the current directory. |
+| `cwd` | Working directory. `bash` default: the job's own folder; `python-uv` default: the current directory. |
+| `arg` | Any JSON value, up to 64 KiB, handed to the job (see [Job environment](#job-environment)). |
+| `group`, `desc`, `coordinator`, `priority`, `cpus`, `mem_mb`, `retries`, `backoff`, `after`, `worker`, `user` | Same as the flags `-g`, `--desc`, `-C`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `--after` (an array), `-w`. `user` defaults to `$USER`. |
+
+- Flags you set on the command line override the same field in the JSON
+  (`tok submit --from-json job.json --priority 5`).
+- Unknown fields are rejected, so a typo never drops a setting silently.
+- A `python-uv` job runs `uv run --project <project> --no-sync python -m
+  tokimeki.call <entry>` in `cwd`, using the `uv` on the runner's `PATH`. The
+  project's environment must already be synced (`uv sync`), and the
+  `tokimeki` Python package must be one of its dependencies.
+- A job that can't start (e.g. no `uv` on the runner) fails with exit code
+  127 and the reason in its stderr log.
+
 #### Output modes (`--quiet`, `--json`, `--wait`, `--live`)
 
 For shell scripts and AI agents:
@@ -227,6 +285,67 @@ It prints a colored success or failure line on terminals when the job ends. Ctrl
 watching without canceling the submitted job. With multiple scripts, all jobs
 are submitted first, then their logs are streamed in submission order.
 `--live` cannot be combined with `--quiet`, `--json`, or `--resubmit`.
+
+### Coordinators and groups
+
+A **compute** job (the default) does the work. A **coordinator** job
+(`submit -C`) does no compute: it submits compute jobs, polls its group, and
+combines their results — for example a training driver that expands a grid
+into one job per config, so any free slot on any runner can take the next
+config.
+
+```bash
+tok runner --compute-threads 3                 # 1 coordinator + 3 compute slots
+tok submit -C -g c100-redl sweep.sh            # the coordinator
+tok group c100-redl                            # summary + ps table
+tok group c100-redl --json                     # full report for scripts
+```
+
+- **Groups are labels.** A group is every job carrying the name, until `tok gc`
+  removes them. Reusing a name after a finished run shows the old jobs too:
+  pick a fresh name per run or run `tok gc` first. A coordinator submitted
+  without `-g` uses its own job ID as group.
+- **Inheritance.** Every job runs with the variables in
+  [Job environment](#job-environment) set. `tok submit` inside a job uses
+  `TOKIMEKI_GROUP` as the default group and records `TOKIMEKI_JOB_ID` as the
+  new job's `parent`, so a coordinator's submissions need no `-g`.
+- **Scheduling.** Each runner runs at most one coordinator; extra coordinators
+  wait in the queue. Compute jobs from any group run wherever a compute slot is
+  free, by priority, then submission order.
+- **Stopping.** `tok kill` or `tok cancel` on a coordinator stops it, then
+  cancels its group's queued jobs and kills the running ones. Killing a compute
+  job affects only that job.
+- **Crashes.** If a coordinator's runner dies or the coordinator crashes, its
+  children keep running. Its own `--retries` applies; a retried coordinator
+  should read `tok group --json` and submit only what is missing (Tokimeki does
+  not deduplicate).
+
+A coordinator's loop, in shell:
+
+```bash
+#!/bin/bash
+set -euo pipefail
+G=$TOKIMEKI_GROUP
+have=$(tok group "$G" --json | jq -r '.jobs[].desc')
+for cfg in configs/run-*.yaml; do
+  id=$(basename "$cfg" .yaml)
+  grep -qx "$id" <<<"$have" || tok submit -q --desc "$id" -c "python train.py --config $cfg --resume"
+done
+tok group "$G" --wait --poll 60s > /dev/null
+python merge.py
+```
+
+`tok group NAME --wait` blocks until no job in the group is queued, running
+or retrying, other than the job calling it (so a coordinator can wait on its
+own group), then prints the report (`--json` for the full report). `--poll`
+sets how often it checks (default 1m). A retry that was cancelled or removed
+stops counting a couple of minutes after the failure it would have retried.
+
+`compute.active` counts queued, running and retrying compute jobs only, so the
+coordinator never waits on itself. `retrying` is a failed or crashed job whose
+`--retries` allow another attempt that is not visible yet; it keeps the group
+active until the retry shows up. Jobs whose runner died count as `stopped`,
+not active; check `.stopped` if they must be resubmitted.
 
 ### Inspect state
 
@@ -261,7 +380,14 @@ A specific job:
 ```bash
 tokimeki job abc12345           # human form (meta + script)
 tokimeki job abc12345 --json    # the job object, no script
+tokimeki result abc12345        # the result the job wrote (indented JSON)
+tokimeki result abc12345 --json # the same, compact
 ```
+
+`tok result` exits with `not_found` when the job wrote no result. A failed
+job that described its failure (see [Job environment](#job-environment))
+shows it in `tok group`'s Failed line and in the job's `error` field in
+`--json` output.
 
 Combined dashboard (one-shot):
 
@@ -296,6 +422,18 @@ tok kill abc12345 --worker w-gpu01 # explicit worker (rare; only if meta is corr
 ```
 
 The owning runner is looked up from the job's `meta.json` automatically — no need to remember which worker is running it. Use `tok cancel <job_id>` for queued jobs that haven't started yet.
+
+On a coordinator, both also stop its group and report it:
+
+```
+Kill signal 15 sent to job 3f2a9c01
+Group c100-redl: cancelled 12, killed 3
+```
+
+A job that could not be stopped (for example one on a runner that is no
+longer alive) is listed on stderr and the command exits 1. If the
+coordinator's own runner is dead, the rest of the group is still stopped and
+the command fails with `runner_not_running`.
 
 ### Wait for a job
 
@@ -499,28 +637,36 @@ Every command that takes `--json` prints the engine's result types. Conventions:
 | `ps --json` | array of Job |
 | `job <id> --json` | Job |
 | `runners --json` | array of Runner |
+| `group <name> --json` | GroupReport (also with `--wait`) |
+| `result <id> --json` | the job's result, exactly the JSON value it wrote |
 | `stats --json` | array of StatsSample |
 | `events --json` | NDJSON, one Event per line (works with `-f`) |
 | `submit --json` | SubmitResult; an array when several scripts are submitted |
 | `submit -r <id> --json` | SubmitResult |
 | `submit --wait --json` | `{"submitted": [SubmitResult...], "results": [WatchResult...]}`; exit code as without `--json` |
 | `watch --json` | WatchResult; exit code as without `--json` |
-| `kill --json` | `{"job_id", "worker_id", "signal"}` |
-| `cancel --json` | `{"job_id"}` |
+| `kill --json` | KillResult; exit 1 if part of a cascade failed |
+| `cancel --json` | CancelResult; exit 1 if part of a cascade failed |
 | `exec --json` | `{"stdout", "stderr", "exit_code"}`; exits 0 whatever the command's exit code |
 | `gc --json` | `{"dry_run", "removed": [{"kind","id","status","size_bytes"}], "warnings": [{"kind","id","error"}]}` |
 
-**Job:** `job_id`, `worker_id`, `command`, `name`, `desc`, `user`, `status` (as stored), `effective_status` (`stopped` when its runner is dead), `pid`, `exit_code` (null until finished), `priority`, `cpus`, `mem_mb`, `depends_on`, `retries`, `attempts`, `backoff_secs`, `orig_job`, `not_before_ns`, `queue_position` (1-based, active jobs only), `submitted_at_ns`, `started_at_ns`, `finished_at_ns`, `elapsed_secs`.
+**Job:** `job_id`, `worker_id`, `execute` (`{abi, type, label, entry, project, cwd, arg}`; `label` is the display text), `kind` (`compute` or `coordinator`), `parent` (submitting coordinator), `name` (the group), `desc`, `user`, `status` (as stored), `effective_status` (`stopped` when its runner is dead), `pid`, `exit_code` (null until finished), `priority`, `cpus`, `mem_mb`, `depends_on`, `retries`, `attempts`, `backoff_secs`, `orig_job`, `not_before_ns`, `queue_position` (1-based, active jobs only), `submitted_at_ns`, `started_at_ns`, `finished_at_ns`, `elapsed_secs`, `error` (failed jobs that described their failure: `{stage, type, message}`).
 
-**Runner:** `worker_id`, `has_info`, `hostname`, `pid`, `version`, `started_at_ns`, `heartbeat_ns`, `alive` (heartbeat under 30s old), `ttl_secs`, `remaining_secs`, `current_job` (`{job_id, pid, command, started_at_ns}`).
+**Runner:** `worker_id`, `has_info`, `hostname`, `pid`, `version`, `started_at_ns`, `heartbeat_ns`, `alive` (heartbeat under 30s old), `ttl_secs`, `remaining_secs`, `compute_threads`, `running_jobs` (array of `{job_id, kind, pid, label, started_at_ns}`, in start order).
 
-**StatsSample:** `worker_id`, `hostname`, `job_id`, `pid`, `cpu_percent`, `rss_bytes`, `gpu_available`, `gpu_util_percent`, `gpu_mem_bytes`, `gpu_mem_total_bytes`, `num_threads`, `num_procs`, `sampled_at_ns`, `stale`, `note`.
+**StatsSample** (one per running job): `worker_id`, `hostname`, `job_id`, `pid`, `cpu_percent`, `rss_bytes`, `gpu_available`, `gpu_util_percent`, `gpu_mem_bytes`, `gpu_mem_total_bytes`, `num_threads`, `num_procs`, `sampled_at_ns`, `stale`, `note`.
 
 **Event:** `ts_ns`, `kind`, `job_id`, `worker_id`, `exit_code`, `status`, `fields`.
 
 **SubmitResult:** `job_id`, `position` (queue position at submit), `worker_id`, `worker_acked`, `running`.
 
 **WatchResult:** `status`, `exit_code` (null for killed/crashed jobs without one).
+
+**GroupReport:** `group`, `coordinators` and `compute` (each `{total, active, retrying, queued, running, stopped, completed, failed, killed, crashed}`; `active` = queued + running + retrying), `failed` (Jobs that failed, crashed or were killed), `stopped` (Jobs running on a dead runner), `jobs` (every Job: active ones in dispatch order, then the rest by submission).
+
+**KillResult:** `job_id`, `worker_id`, `signal`, `cascade` (GroupStop, only for coordinators). **CancelResult:** `job_id`, `cascade`.
+
+**GroupStop:** `group`, `cancelled` (job IDs), `killed` (job IDs), `failures` (`[{job_id, code, message}]`).
 
 ### Errors
 
@@ -535,6 +681,17 @@ If `submit` with several scripts fails partway, the envelope also has `"submitte
 Codes: `not_found`, `invalid_state` (e.g. cancel a running job), `invalid_argument` (bad flags or arguments), `timeout`, `runner_rejected`, `runner_not_running`, `internal`.
 
 `--json` cannot be combined with `submit --live`, `submit --quiet`, or `exec -i`.
+
+### Notices
+
+Warnings and (with `--verbose`) debug lines go to stderr, never stdout. With
+`--json`, each one is a JSON line on stderr:
+
+```json
+{"notice": {"level": "warning", "code": "legacy_schema", "message": "3 jobs use a deprecated meta.json schema (1); upgraded to schema 2 in memory", "count": 3}}
+```
+
+`level` is `warning` or `debug`; `code`, `job_id` and `count` are optional.
 
 Example: count active jobs per worker:
 
@@ -594,26 +751,39 @@ Then `<tab>` completes:
 
 The `--base` flag overrides `TOKIMEKI_HOME`.
 
-State layout under `<base>/`:
+### Job environment
+
+Every job runs with these variables set:
+
+| Variable | Value |
+|---|---|
+| `TOKIMEKI_HOME` | The state directory (absolute) |
+| `TOKIMEKI_JOB_ID` | The job's ID |
+| `TOKIMEKI_GROUP` | The job's group (may be empty) |
+| `TOKIMEKI_JOB_KIND` | `compute` or `coordinator` |
+| `TOKIMEKI_JOB_META` | Path of the job's record (JSON); its `execute.arg` is the `arg` given at submit |
+| `TOKIMEKI_JOB_RESULT` | Where the job may write its result: one JSON value, read back with `tok result` |
+| `TOKIMEKI_JOB_ERROR` | Where the job may describe a failure: `{"stage": "...", "type": "...", "message": "..."}` |
+| `TOKIMEKI_BIN` | The runner's `tokimeki` binary |
+
+A bash job can read its argument with `jq .execute.arg "$TOKIMEKI_JOB_META"`.
+Each job's logs live in `<base>/jobs/<id>/` (`stdout.log`, `stderr.log`,
+plus `result.json`/`error.json` if the job wrote them); `tok logs`, `tok
+result` and `tok gc` work with them for you.
+
+### Jobs from older versions
+
+v0.5.0 changed how job records are stored. Jobs created by v0.4 and older
+still list, run and resubmit normally. Each command that reads them prints
+one line like
 
 ```
-shared/
-  queue.json           # global queue
-  events.ndjson        # append-only event log
-  reservations/        # per-job reservation records
-  .global-lock         # exclusive lock during queue mutations
-workers/<id>/
-  info.json            # registration metadata
-  heartbeat            # unix-nanos timestamp
-  current.json         # currently running job, if any
-  inbox/  outbox/      # request/response FIFOs (files)
-  exec/<sid>/          # interactive exec session FIFOs
-  shell/               # private rendezvous files for open shell sessions
-jobs/<id>/
-  meta.json            # job metadata
-  script.sh
-  stdout.log  stderr.log
-tmp/                   # atomic-write staging
+warning: 3 jobs use a deprecated meta.json schema (1); upgraded to schema 2 in memory
 ```
 
-You don't normally interact with these directly — but knowing they exist makes `gc`, debugging, and stuck-state recovery easier.
+A job's record is converted for good the next time it changes (it starts,
+finishes or is killed); finished old jobs keep the warning until `tok gc`
+removes them. A record written by a newer tokimeki is skipped in
+listings and refused by single-job commands (`invalid_state`). Run every
+runner and every `tok` on the cluster at the same version: an older `tok`
+rewriting a new record loses what it doesn't understand.

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/json"
@@ -119,6 +120,9 @@ func tuiCmd() *cobra.Command {
 		Short: "Open the interactive jobs dashboard",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Notices would draw over the dashboard; print them on exit.
+			replay := holdWarnings(os.Stderr)
+			defer replay()
 			return tui.Run(resolveBase())
 		},
 	}
@@ -132,12 +136,16 @@ func runnerCmd() *cobra.Command {
 	var mannerPeriod time.Duration
 	var ttlText string
 	var capCPUs, capMemMB int
+	var computeThreads int
 
 	cmd := &cobra.Command{
 		Use:   "runner",
 		Short: "Start the runner daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			base := resolveBase()
+			if computeThreads < 1 {
+				return argError("--compute-threads must be at least 1")
+			}
 			var ttl time.Duration
 			if ttlText != "" {
 				var err error
@@ -156,6 +164,7 @@ func runnerCmd() *cobra.Command {
 			d.SetMannerPeriod(mannerPeriod)
 			d.SetTTL(ttl)
 			d.SetCapacity(runner.Capacity{CPUs: capCPUs, MemMB: capMemMB})
+			d.SetComputeThreads(computeThreads)
 			if err := d.Register(); err != nil {
 				return fmt.Errorf("register: %w", err)
 			}
@@ -164,7 +173,7 @@ func runnerCmd() *cobra.Command {
 			if ttl > 0 {
 				ttlLabel = display.TTL(ttl)
 			}
-			log.Printf("Runner %s started (poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), poll, mannerPeriod, ttlLabel, base)
+			log.Printf("Runner %s started (compute_threads=%d, poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), computeThreads, poll, mannerPeriod, ttlLabel, base)
 
 			// Handle graceful shutdown.
 			sigCh := make(chan os.Signal, 1)
@@ -188,6 +197,7 @@ func runnerCmd() *cobra.Command {
 	cmd.Flags().StringVar(&ttlText, "ttl", "", "optional runner lifetime metadata in hours and days (e.g. 6d23h)")
 	cmd.Flags().IntVar(&capCPUs, "capacity-cpus", 0, "available CPU count for capacity-aware scheduling (0 = unconstrained)")
 	cmd.Flags().IntVar(&capMemMB, "capacity-mem-mb", 0, "available memory in MB for capacity-aware scheduling (0 = unconstrained)")
+	cmd.Flags().IntVar(&computeThreads, "compute-threads", 1, "compute jobs to run at once (one coordinator slot is extra)")
 
 	return cmd
 }
@@ -252,6 +262,85 @@ func psCmd() *cobra.Command {
 	return cmd
 }
 
+// --- group ---
+
+func groupCmd() *cobra.Command {
+	var asJSON, wait bool
+	var poll time.Duration
+	cmd := &cobra.Command{
+		Use:   "group <group>",
+		Short: "Show a group's jobs and counts",
+		Long: `Show every job carrying the group label: a summary (coordinators, compute
+jobs by status, failed and stopped jobs) and the ps table.
+
+--json prints the full report. A coordinator polls it and waits for
+compute.active == 0 (queued + running compute jobs); its own run is counted
+under coordinators. Jobs on a dead runner count as stopped, not active.
+
+--wait blocks until no job in the group is queued, running or retrying,
+other than the job calling it (checking every --poll), then prints the
+report. A coordinator can wait on its own group.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := client.New(resolveBase())
+			var rep client.GroupReport
+			var err error
+			if wait {
+				if poll <= 0 {
+					return argError("--poll must be positive")
+				}
+				rep, err = c.WaitGroup(args[0], poll, nil)
+			} else {
+				rep, err = c.Group(args[0])
+			}
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return writeJSON(rep)
+			}
+			return printGroup(os.Stdout, rep)
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the group report as JSON (see docs/USAGE.md)")
+	cmd.Flags().BoolVar(&wait, "wait", false, "wait until no other job in the group is queued, running or retrying")
+	cmd.Flags().DurationVar(&poll, "poll", time.Minute, "how often --wait checks the group")
+	return cmd
+}
+
+// --- result ---
+
+func resultCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "result <job_id>",
+		Short: "Print the result a job wrote",
+		Long: `Print what the job wrote to the file named by $TOKIMEKI_JOB_RESULT (JSON).
+A Python job's return value lands there. Exits with not_found when the job
+wrote no result.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			res, err := client.New(resolveBase()).JobResult(args[0])
+			if err != nil {
+				return err
+			}
+			var out bytes.Buffer
+			if asJSON {
+				err = json.Compact(&out, res)
+			} else {
+				err = json.Indent(&out, res, "", "  ")
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Println(out.String())
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print the result as compact JSON")
+	return cmd
+}
+
 // --- ls ---
 
 func lsCmd() *cobra.Command {
@@ -291,7 +380,9 @@ func submitCmd() *cobra.Command {
 	var afterCSV string
 	var priority, cpus, memMB, retries int
 	var backoff string
-	var name, desc string
+	var name, group, desc string
+	var coordinator bool
+	var fromJSON string
 	var wait, quiet, asJSON, live bool
 
 	cmd := &cobra.Command{
@@ -301,7 +392,12 @@ func submitCmd() *cobra.Command {
 Use either:
 - a script path argument
 - --command/-c for an inline command
-- -r/--resubmit with a job ID (copies its script and settings; -w targets a runner).`,
+- -r/--resubmit with a job ID (copies its script and settings; -w targets a runner).
+
+-C/--coordinator submits a coordinator: a job that does no compute itself but
+submits compute jobs, polls its group (tok group) and combines results. Each
+runner runs at most one coordinator next to its compute jobs. Jobs submitted
+from inside a job join that job's group unless -g is given.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			if live && (quiet || asJSON) {
@@ -317,6 +413,9 @@ Use either:
 				}
 				if inlineCommand != "" {
 					return argError("--command cannot be used with --resubmit")
+				}
+				if fromJSON != "" {
+					return argError("--from-json cannot be used with --resubmit")
 				}
 				res, err := c.Resubmit(args[0], workerID, client.SubmitOpts{Timeout: timeout})
 				if err != nil {
@@ -337,65 +436,85 @@ Use either:
 				return nil
 			}
 
-			var deps []string
-			if afterCSV != "" {
-				for _, d := range strings.Split(afterCSV, ",") {
-					d = strings.TrimSpace(d)
-					if d != "" {
-						deps = append(deps, d)
-					}
-				}
-			}
-			if backoff != "" {
-				if _, err := time.ParseDuration(backoff); err != nil {
-					return argError("invalid --backoff: %v", err)
-				}
-			}
-			user := os.Getenv("USER")
-
-			spec := protocol.JobSpec{
-				TargetWorkerID: workerID,
-				DependsOn:      deps,
-				Priority:       priority,
-				CPUs:           cpus,
-				MemMB:          memMB,
-				User:           user,
-				Retries:        retries,
-				Backoff:        backoff,
-				Name:           name,
-				Desc:           desc,
-			}
-
 			if quiet && asJSON {
 				return argError("--quiet and --json are mutually exclusive")
 			}
-			if live {
-				var paths []string
-				if inlineCommand == "" {
-					if len(args) == 0 {
-						return argError("script submit requires: submit <script_path> [script_path...]")
-					}
-					paths = args
-				} else if len(args) != 0 {
+			if group != "" && name != "" && group != name {
+				return argError("--group and --name differ")
+			}
+			req := client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash}
+			if fromJSON != "" {
+				if len(args) != 0 {
+					return argError("--from-json takes no script paths; name the script in script_file")
+				}
+				var err error
+				if req, err = client.ReadSubmitRequest(fromJSON, os.Stdin); err != nil {
+					return err
+				}
+			} else if inlineCommand == "" && len(args) == 0 {
+				return argError("script submit requires: submit <script_path> [script_path...]")
+			}
+			// Flags the user set override the same field of --from-json.
+			changed := cmd.Flags().Changed
+			if changed("command") {
+				if len(args) != 0 {
 					return argError("inline submit requires: submit -c <command>")
 				}
-				targets := []string{workerID}
-				if inlineCommand == "" {
-					var err error
-					targets, err = submitTargets(os.Args, cmd, len(paths))
-					if err != nil {
-						return err
-					}
+				req.Inline = inlineCommand
+			}
+			if changed("worker") {
+				req.Worker = workerID
+			}
+			if changed("after") {
+				req.After = strings.Split(afterCSV, ",")
+			}
+			if changed("priority") {
+				req.Priority = priority
+			}
+			if changed("cpus") {
+				req.CPUs = cpus
+			}
+			if changed("mem-mb") {
+				req.MemMB = memMB
+			}
+			if changed("retries") {
+				req.Retries = retries
+			}
+			if changed("backoff") {
+				req.Backoff = backoff
+			}
+			if changed("group") || changed("name") {
+				req.Group = group
+				if req.Group == "" {
+					req.Group = name
 				}
+			}
+			if changed("desc") {
+				req.Desc = desc
+			}
+			if changed("coordinator") {
+				req.Coordinator = coordinator
+			}
+
+			// One request per script path; each path may have its own -w.
+			reqs := []client.SubmitRequest{req}
+			if len(args) > 0 {
+				targets, err := submitTargets(os.Args, cmd, len(args))
+				if err != nil {
+					return err
+				}
+				reqs = reqs[:0]
+				for i, path := range args {
+					r := req
+					r.ScriptFile = path
+					r.Worker = targets[i] // -w applies only to the script after it
+					reqs = append(reqs, r)
+				}
+			}
+			if live {
 				var ids []string
-				for i := range targets {
-					spec.TargetWorkerID = targets[i]
-					spec.Command = inlineCommand
-					path := ""
-					if inlineCommand == "" {
-						path = paths[i]
-					}
-					res, err := submitLiveOne(c, spec, path, timeout)
+				for _, r := range reqs {
+					res, err := submitLiveOne(c, r, timeout)
 					if err != nil {
 						return err
 					}
@@ -404,39 +523,18 @@ Use either:
 				return runLiveJobs(c, ids)
 			}
 			var submitted []client.SubmitResult
-			submit := func(spec protocol.JobSpec, path string) error {
-				res, err := submitOne(c, spec, path, quiet || asJSON, timeout)
+			for _, r := range reqs {
+				res, err := submitOne(c, r, quiet || asJSON, timeout)
 				if err != nil {
+					if len(reqs) > 1 {
+						return &batchError{err: fmt.Errorf("submit %s: %w", r.ScriptFile, err), submitted: submitted}
+					}
 					return err
 				}
 				if quiet {
 					fmt.Println(res.JobID)
 				}
 				submitted = append(submitted, res)
-				return nil
-			}
-			if inlineCommand != "" {
-				if len(args) != 0 {
-					return argError("inline submit requires: submit -c <command>")
-				}
-				spec.Command = inlineCommand
-				if err := submit(spec, ""); err != nil {
-					return err
-				}
-			} else {
-				if len(args) == 0 {
-					return argError("script submit requires: submit <script_path> [script_path...]")
-				}
-				targets, err := submitTargets(os.Args, cmd, len(args))
-				if err != nil {
-					return err
-				}
-				for i, path := range args {
-					spec.TargetWorkerID = targets[i]
-					if err := submit(spec, path); err != nil {
-						return &batchError{err: fmt.Errorf("submit %s: %w", path, err), submitted: submitted}
-					}
-				}
 			}
 			if !wait {
 				if !asJSON {
@@ -490,6 +588,7 @@ Use either:
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().StringVarP(&workerID, "worker", "w", "", "target worker ID (optional)")
 	cmd.Flags().StringVarP(&inlineCommand, "command", "c", "", "inline command to submit to the global queue")
+	cmd.Flags().StringVar(&fromJSON, "from-json", "", "read the submit request from a JSON file (- for stdin); flags you set override its fields (see docs/USAGE.md)")
 	cmd.Flags().BoolVarP(&resubmit, "resubmit", "r", false, "resubmit a copy of an existing job by ID")
 	cmd.Flags().StringVar(&afterCSV, "after", "", "wait for these comma-separated job IDs to complete first")
 	cmd.Flags().IntVar(&priority, "priority", 0, "scheduling priority; higher runs sooner (default 0)")
@@ -497,7 +596,9 @@ Use either:
 	cmd.Flags().IntVar(&memMB, "mem-mb", 0, "required memory in MB (resource hint)")
 	cmd.Flags().IntVar(&retries, "retries", 0, "max retries on failed/crashed (default 0)")
 	cmd.Flags().StringVar(&backoff, "backoff", "", "delay between retries (e.g. 30s, 5m)")
-	cmd.Flags().StringVarP(&name, "name", "n", "", "short tag for grouping/filtering (shared, non-unique)")
+	cmd.Flags().StringVarP(&group, "group", "g", "", "group label (default: $TOKIMEKI_GROUP inside a job)")
+	cmd.Flags().StringVarP(&name, "name", "n", "", "alias of --group")
+	cmd.Flags().BoolVarP(&coordinator, "coordinator", "C", false, "submit a coordinator job (runs in the runner's coordinator slot)")
 	cmd.Flags().StringVar(&desc, "desc", "", "optional free-text description")
 	cmd.Flags().BoolVar(&wait, "wait", false, "block until job reaches a terminal state; exit with the job's exit code")
 	cmd.Flags().BoolVarP(&live, "live", "l", false, "show assignment and stream job output until completion; Ctrl-C leaves the job running")
@@ -508,24 +609,14 @@ Use either:
 
 // submitOne submits one job. Unless silent, it prints each submit stage as
 // it happens.
-func submitOne(c *client.Client, spec protocol.JobSpec, path string, silent bool, timeout time.Duration) (client.SubmitResult, error) {
+func submitOne(c *client.Client, req client.SubmitRequest, silent bool, timeout time.Duration) (client.SubmitResult, error) {
 	opts := client.SubmitOpts{Timeout: timeout}
 	if !silent {
 		opts.OnProgress = printSubmitProgress
 	}
-	return submitSpec(c, spec, path, opts)
+	return c.Submit(req, opts)
 }
 
-// submitSpec submits an inline command (path empty) or a script file.
-func submitSpec(c *client.Client, spec protocol.JobSpec, path string, opts client.SubmitOpts) (client.SubmitResult, error) {
-	if path == "" {
-		return c.Submit(spec, opts)
-	}
-	return c.SubmitFile(spec, path, opts)
-}
-
-// printSubmitProgress prints each submit stage as it happens, so the queue
-// position shows before the runner ack arrives.
 func printSubmitProgress(stage client.SubmitStage, res client.SubmitResult) {
 	switch stage {
 	case client.SubmitQueued:
@@ -546,8 +637,8 @@ func printSubmitProgress(stage client.SubmitStage, res client.SubmitResult) {
 	}
 }
 
-func submitLiveOne(c *client.Client, spec protocol.JobSpec, path string, timeout time.Duration) (client.SubmitResult, error) {
-	res, err := submitSpec(c, spec, path, client.SubmitOpts{
+func submitLiveOne(c *client.Client, req client.SubmitRequest, timeout time.Duration) (client.SubmitResult, error) {
+	res, err := c.Submit(req, client.SubmitOpts{
 		Timeout: timeout,
 		OnProgress: func(stage client.SubmitStage, res client.SubmitResult) {
 			if stage != client.SubmitQueued {
@@ -882,30 +973,37 @@ only when meta is missing or corrupt).`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
 			jobID := args[0]
-			var err error
-			if worker != "" {
-				err = c.Kill(worker, jobID, sig, timeout)
-			} else {
-				worker, err = c.KillJob(jobID, sig, timeout)
-			}
-			if err != nil {
-				return err
-			}
 			if sig == 0 {
 				sig = 15
 			}
-			if asJSON {
-				return writeJSON(map[string]any{"job_id": jobID, "worker_id": worker, "signal": sig})
+			var res client.KillResult
+			if worker != "" {
+				if err := c.Kill(worker, jobID, sig, timeout); err != nil {
+					return err
+				}
+				res = client.KillResult{JobID: jobID, Worker: worker, Signal: sig}
+			} else {
+				var err error
+				if res, err = c.KillJob(jobID, sig, timeout); err != nil {
+					return err
+				}
 			}
-			fmt.Printf("Kill signal %d sent to job %s\n", sig, jobID)
-			return nil
+			if asJSON {
+				if err := writeJSON(res); err != nil {
+					return err
+				}
+			} else {
+				fmt.Printf("Kill signal %d sent to job %s\n", sig, jobID)
+				printGroupStop(res.Cascade)
+			}
+			return cascadeExit(cmd, res.Cascade)
 		},
 	}
 
 	cmd.Flags().IntVar(&sig, "signal", 15, "signal number to send")
 	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
 	cmd.Flags().StringVar(&worker, "worker", "", "explicit worker ID (override meta lookup)")
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, worker_id, signal} as JSON")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, worker_id, signal, cascade} as JSON")
 	return cmd
 }
 
@@ -919,18 +1017,44 @@ func cancelCmd() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeJobIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := client.New(resolveBase()).Cancel(args[0]); err != nil {
+			res, err := client.New(resolveBase()).Cancel(args[0])
+			if err != nil {
 				return err
 			}
 			if asJSON {
-				return writeJSON(map[string]string{"job_id": args[0]})
+				if err := writeJSON(res); err != nil {
+					return err
+				}
+			} else {
+				fmt.Printf("Canceled queued job %s\n", args[0])
+				printGroupStop(res.Cascade)
 			}
-			fmt.Printf("Canceled queued job %s\n", args[0])
-			return nil
+			return cascadeExit(cmd, res.Cascade)
 		},
 	}
-	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id} as JSON")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {job_id, cascade} as JSON")
 	return cmd
+}
+
+// printGroupStop reports what stopping a coordinator's group did.
+func printGroupStop(stop *client.GroupStop) {
+	if stop == nil {
+		return
+	}
+	fmt.Printf("Group %s: cancelled %d, killed %d\n", stop.Group, len(stop.Cancelled), len(stop.Killed))
+	for _, f := range stop.Failures {
+		fmt.Fprintf(os.Stderr, "  could not stop %s: %s\n", f.JobID, f.Message)
+	}
+}
+
+// cascadeExit makes the command exit 1 when part of a group could not be
+// stopped. The result was already printed, so the error itself is silent.
+func cascadeExit(cmd *cobra.Command, stop *client.GroupStop) error {
+	if stop == nil || len(stop.Failures) == 0 {
+		return nil
+	}
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	return errSilentExit
 }
 
 // --- logs ---

@@ -14,12 +14,17 @@ func newRootCmd() *cobra.Command {
 	// the command the user actually typed.
 	progName := filepath.Base(os.Args[0])
 
+	var verbose bool
 	rootCmd := &cobra.Command{
 		Use:   progName,
 		Short: "TOKIMEKI Runners — filesystem-based job submission system",
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			installNotices(cmd, os.Stderr, verbose)
+		},
 	}
 
 	rootCmd.PersistentFlags().StringVar(&baseDir, session.FlagBase, "", "base directory for state (default: ~/.tokimeki)")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "print engine debug logs on stderr (warnings are always printed)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "run", Title: "Run:"},
@@ -42,6 +47,8 @@ func newRootCmd() *cobra.Command {
 		add(lsCmd(), "inspect"),
 		add(topCmd(), "inspect"),
 		add(jobCmd(), "inspect"),
+		add(groupCmd(), "inspect"),
+		add(resultCmd(), "inspect"),
 		add(logsCmd(), "inspect"),
 		add(eventsCmd(), "inspect"),
 		add(watchCmd(), "inspect"),

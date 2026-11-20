@@ -1,11 +1,19 @@
-JOB_ID    RUNNER  PID  PRIO  NAME    COMMAND                        STARTED              ELAPSED  STATUS
-a0000008  w-gpu   -    0     -       echo garbage-start             -                    -        ✓ completed
-a0000001  w-gpu   -    0     train   bash run.sh                    2026-01-05 10:00:05  1h23m    ✓ completed
-a0000002  w-gpu   -    5     -       python3 -u eval.py --epochs 5  2026-01-05 11:24:00  6m       ✗ failed
-a0000003  w-old   -    0     -       sleep 1000                     2026-01-05 10:21:00  1h39m    † killed
-a0000004  w-old   -    0     -       echo crash                     2026-01-05 10:31:00  9m       ‡ crashed
-a0000006  -       -    0     -       echo hi                        -                    -        ◌ queued
-a0000007  w-gpu   -    2     TrainB  bash z.sh                      -                    -        ◌ queued
+JOB_ID    RUNNER   PID  PRIO  GROUP   COMMAND                                 STARTED              ELAPSED  STATUS
+a0000008  w-gpu    -    0     -       echo garbage-start                      -                    -        ✓ completed
+a0000001  w-gpu    -    0     train   bash run.sh                             2026-01-05 10:00:05  1h23m    ✓ completed
+a0000002  w-gpu    -    5     -       python3 -u eval.py --epochs 5           2026-01-05 11:24:00  6m       ✗ failed
+a0000003  w-old    -    0     -       sleep 1000                              2026-01-05 10:21:00  1h39m    † killed
+a0000004  w-old    -    0     -       echo crash                              2026-01-05 10:31:00  9m       ‡ crashed
+a0000006  -        -    0     -       echo hi                                 -                    -        ◌ queued
+a0000007  w-gpu    -    2     TrainB  bash z.sh                               -                    -        ◌ queued
+c0000001  w-multi  901  0     exp     [C] bash sweep.sh                       -                    -        ○ stopped
+c0000002  w-multi  902  0     exp     python train.py --config r1.yaml        -                    -        ○ stopped
+c0000003  -        -    0     exp     python train.py --config r2.yaml        -                    -        ◌ queued
+c0000004  w-gpu    -    0     exp     python train.py --config r3.yaml        2026-01-05 12:10:00  5m       ✓ completed
+c0000005  w-gpu    -    0     exp     python train.py --config r4.yaml        2026-01-05 12:10:00  2m       ✗ failed
+c0000006  w-old    -    0     exp     python train.py --config r5.yaml        2026-01-05 12:10:00  1m       ‡ crashed
+p0000001  w-gpu    -    0     py      python-uv evident.train:run_experiment  2026-01-05 12:20:05  30m      ✓ completed
+p0000002  w-gpu    -    0     py      python-uv evident.train:run_experiment  2026-01-05 12:20:06  0m       ✗ failed
 
 --stderr--
 

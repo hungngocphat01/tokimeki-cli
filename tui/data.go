@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/hungngocphat01/tokimeki/client"
 	"github.com/hungngocphat01/tokimeki/protocol"
+	"github.com/ngocphat/tokimeki-cli/display"
 )
 
 type job struct {
@@ -16,14 +17,39 @@ type job struct {
 
 type worker struct {
 	client.Runner
+	jobs []runnerJob // running jobs in start order
+}
+
+// runnerJob is one job a runner is running, with its fresh stats sample.
+type runnerJob struct {
+	client.CurrentJob
 	stats *client.StatsSample
+}
+
+// slots renders the runner's busy compute slots, e.g. "2/3".
+func (w worker) slots() string {
+	busy := 0
+	for _, j := range w.jobs {
+		if j.Kind != protocol.KindCoordinator {
+			busy++
+		}
+	}
+	return display.RunnerSlots(busy, w.ComputeThreads)
+}
+
+// label renders a running job as "[C] id" for coordinators, "id" otherwise.
+func (j runnerJob) label() string {
+	if j.Kind == protocol.KindCoordinator {
+		return "[C] " + j.JobID
+	}
+	return j.JobID
 }
 
 func (w worker) displayStatus() string {
 	if !w.Alive {
 		return client.StatusStopped
 	}
-	if w.Current == nil {
+	if len(w.jobs) == 0 {
 		return "idle"
 	}
 	return "running"
@@ -53,11 +79,11 @@ func loadSnapshot(paths *protocol.Paths) (snapshot, error) {
 			continue
 		}
 		item := worker{Runner: r}
-		if r.Current != nil && r.Current.JobID == "" {
-			item.Current = nil
-		}
-		if item.Current != nil {
-			item.stats = freshSample(samples, r.ID, item.Current.JobID)
+		for _, run := range r.Running {
+			if run.JobID == "" {
+				continue
+			}
+			item.jobs = append(item.jobs, runnerJob{CurrentJob: run, stats: freshSample(samples, r.ID, run.JobID)})
 		}
 		workers = append(workers, item)
 	}

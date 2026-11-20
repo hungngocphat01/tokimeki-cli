@@ -4,6 +4,7 @@
 package display
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,4 +235,9 @@ func Truncate(s string, n int) string {
 		return s
 	}
 	return s[:n-3] + "..."
+}
+
+// RunnerSlots renders a runner's busy compute slots as "<busy>/<threads>".
+func RunnerSlots(busy, threads int) string {
+	return fmt.Sprintf("%d/%d", busy, threads)
 }

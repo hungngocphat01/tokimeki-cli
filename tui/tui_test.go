@@ -35,7 +35,7 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	writeJSON(paths.JobMeta("queued01"), protocol.JobMeta{JobID: "queued01", Status: protocol.StatusQueued, SubmittedAt: "2026-01-01T00:01:00Z"})
 	writeJSON(paths.JobMeta("finished"), protocol.JobMeta{JobID: "finished", Status: protocol.StatusCompleted, SubmittedAt: "2026-01-01T00:02:00Z"})
 	writeJSON(paths.WorkerInfo("node1"), protocol.WorkerInfo{WorkerID: "node1", Hostname: "gpu01"})
-	writeJSON(paths.WorkerCurrent("node1"), protocol.JobInfo{JobID: "running1", PID: 222})
+	writeJSON(paths.WorkerRunning("node1", "running1"), protocol.JobInfo{JobID: "running1", PID: 222})
 	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestActiveJobsAndSelectedTelemetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.workers) != 1 || state.workers[0].stats == nil || state.workers[0].stats.CPUPercent != 143 {
+	if len(state.workers) != 1 || len(state.workers[0].jobs) != 1 || state.workers[0].jobs[0].stats == nil || state.workers[0].jobs[0].stats.CPUPercent != 143 {
 		t.Fatalf("runner stats snapshot = %+v", state.workers)
 	}
 	jobs := orderJobs(state.jobs, false)
@@ -183,7 +183,7 @@ func TestRunnersActivityAndEventJump(t *testing.T) {
 func TestRunnerDetailListShowsOnlyNames(t *testing.T) {
 	m := model{feature: runnersFeature, workers: []worker{
 		{Runner: client.Runner{ID: "idle", HasInfo: true, Hostname: "gpu01", Alive: true}},
-		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true, Current: &client.CurrentJob{JobID: "job1"}}},
+		{Runner: client.Runner{ID: "busy", HasInfo: true, Hostname: "gpu02", Alive: true}, jobs: []runnerJob{{CurrentJob: client.CurrentJob{JobID: "job1"}}}},
 	}}
 	for i, want := range []struct{ label, status string }{
 		{"idle", "idle"},
@@ -217,8 +217,8 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 30,
 		feature: runnersFeature, focus: 1,
 		workers: []worker{
-			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true, Current: &client.CurrentJob{JobID: "job1", PID: 123}},
-				stats: &client.StatsSample{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUAvailable: true, GPUUtilPercent: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAtNs: time.Now().UnixNano()}},
+			{Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true}, jobs: []runnerJob{{CurrentJob: client.CurrentJob{JobID: "job1", PID: 123},
+				stats: &client.StatsSample{JobID: "job1", CPUPercent: 143, RSSBytes: 2 << 30, GPUAvailable: true, GPUUtilPercent: 67, GPUMemBytes: 4 << 30, GPUMemTotalBytes: 8 << 30, NumProcs: 3, SampledAtNs: time.Now().UnixNano()}}}},
 			{Runner: client.Runner{ID: "gpu-b", HasInfo: true, Hostname: "node-b", Alive: true}},
 		},
 	}
@@ -248,7 +248,7 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 func TestActivityShowsSubmittedScriptName(t *testing.T) {
 	m := model{
 		feature: activityFeature,
-		history: []job{{Job: client.Job{ID: "job12345", Command: "/work/train_model.sh"}}},
+		history: []job{{Job: client.Job{ID: "job12345", Execute: &protocol.Execute{ABI: protocol.ExecABI, Type: protocol.ExecBash, Label: "/work/train_model.sh"}}}},
 		events:  []client.Event{{Kind: client.EventStart, JobID: "job12345", TSNs: time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC).UnixNano()}},
 	}
 	label, _ := m.itemLabel(0)
@@ -368,7 +368,7 @@ func TestStatusColorsAndLowerPaneScrolling(t *testing.T) {
 
 func TestJobActionsAndContextHelp(t *testing.T) {
 	paths := protocol.NewPaths(t.TempDir())
-	res, err := client.New(paths.Base).Submit(protocol.JobSpec{Script: "#!/bin/bash\necho hello\n", Command: "echo hello"}, client.SubmitOpts{})
+	res, err := client.New(paths.Base).Submit(client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash, Inline: "echo hello"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -509,4 +509,82 @@ type statsFile struct {
 	CPUPercent float64 `json:"cpu_percent"`
 	RSSBytes   int64   `json:"rss_bytes"`
 	SampledAt  string  `json:"sampled_at"`
+}
+
+func TestTUIRunnerWithTwoJobs(t *testing.T) {
+	now := time.Now().UnixNano()
+	m := model{
+		paths: protocol.NewPaths("/tmp/tokimeki"), width: 100, height: 40,
+		feature: runnersFeature, focus: 1, runnerStats: true,
+		workers: []worker{{
+			Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true, ComputeThreads: 3},
+			jobs: []runnerJob{
+				{CurrentJob: client.CurrentJob{JobID: "coord1", Kind: protocol.KindCoordinator, PID: 11, Label: "bash sweep.sh"},
+					stats: &client.StatsSample{JobID: "coord1", CPUPercent: 1, NumProcs: 1, SampledAtNs: now}},
+				{CurrentJob: client.CurrentJob{JobID: "train1", Kind: protocol.KindCompute, PID: 12, Label: "python train.py"},
+					stats: &client.StatsSample{JobID: "train1", CPUPercent: 250, NumProcs: 4, SampledAtNs: now}},
+			},
+		}},
+	}
+	if _, status := m.itemLabel(0); status != "running" {
+		t.Fatalf("status = %q, want running", status)
+	}
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"BUSY 1/3", "[C] coord1", "train1", "CPU 250%", "PROCS 4"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("stats view missing %q: %s", want, view)
+		}
+	}
+	m.runnerStats = false
+	detail := ansi.Strip(m.renderRunnerDetail(80, 30))
+	for _, want := range []string{"Busy compute slots: 1/3", "[C] coord1  PID 11  bash sweep.sh", "train1  PID 12  python train.py"} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("detail missing %q: %s", want, detail)
+		}
+	}
+}
+
+func TestKillCoordinatorActionStopsGroup(t *testing.T) {
+	paths := protocol.NewPaths(t.TempDir())
+	c := client.New(paths.Base)
+	for _, dir := range []string{paths.JobDir("coord001"), paths.WorkerInbox("node1"), paths.WorkerOutbox("node1"), paths.TmpDir()} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	meta, _ := json.Marshal(protocol.JobMeta{JobID: "coord001", WorkerID: "node1", Status: protocol.StatusRunning, Kind: protocol.KindCoordinator, Name: "g"})
+	if err := os.WriteFile(paths.JobMeta("coord001"), meta, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	child, err := c.Submit(client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash, Inline: "true", Group: "g"}, client.SubmitOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			entries, _ := os.ReadDir(paths.WorkerInbox("node1"))
+			for _, e := range entries {
+				data, _ := os.ReadFile(filepath.Join(paths.WorkerInbox("node1"), e.Name()))
+				var req protocol.Request
+				if json.Unmarshal(data, &req) != nil {
+					continue
+				}
+				_ = os.Remove(filepath.Join(paths.WorkerInbox("node1"), e.Name()))
+				response, _ := json.Marshal(protocol.Response{ReqID: req.ReqID, OK: true})
+				_ = os.WriteFile(filepath.Join(paths.WorkerOutbox("node1"), req.ReqID+".resp"), response, 0o644)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}()
+	selected := job{Job: client.Job{ID: "coord001", Worker: "node1", Kind: protocol.KindCoordinator, Status: protocol.StatusRunning, EffectiveStatus: protocol.StatusRunning}}
+	if result := runAction(paths, selected, killAction); result.err != nil {
+		t.Fatal(result.err)
+	}
+	if _, err := os.Stat(paths.JobDir(child.JobID)); !os.IsNotExist(err) {
+		t.Fatalf("queued child of the killed coordinator still exists: %v", err)
+	}
 }

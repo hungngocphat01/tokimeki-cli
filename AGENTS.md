@@ -20,16 +20,17 @@ versioning.
 
 | Path | Responsibility |
 |---|---|
-| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
-| `cmd/tokimeki/render_jobs.go`, `render_runners.go` | Human tables and the `top` dashboard, rendered from engine result types |
+| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `result`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
+| `cmd/tokimeki/render_jobs.go`, `render_runners.go` | Human tables (`ps`, `group` summary, `runners` slot use) and the `top` dashboard, rendered from engine result types |
+| `cmd/tokimeki/root.go` | Root command: global `--base`, `--verbose` (turns on engine `debug` output on stderr) |
+| `cmd/tokimeki/notices.go` | Prints engine notices: `warning: …` / `--verbose` debug lines on stderr, NDJSON on stderr with `--json`; `tok tui` holds them until exit |
 | `cmd/tokimeki/jsonout.go` | `--json` output (`writeJSON`, `writeNDJSON`) and the `{"error":{"code","message"}}` envelope; `execute()` is the entry point shared by `main` and tests |
 | `cmd/tokimeki/golden_test.go`, `testdata/` | Golden tests: every command's stdout/stderr against a static state directory (`testdata/fixture`); regenerate with `go test ./cmd/tokimeki -run TestGolden -update` and review the diff |
 | `display/` | Pure formatting helpers: colors, status glyphs, durations, sizes, timestamps, command shortening |
 | `cmd/tokimeki/version.go` | `tokimeki version`: CLI version (ldflags), engine version (`version.Engine()`), commit, branch, build time |
 | `tui/` | `tok tui` dashboard: `tui.go` model/update, `view.go` rendering, `data.go` loading through the engine `client`, `actions.go` kill/cancel/shell actions |
 | `scripts/check-engine.sh` | Release guard for the engine pin (see Versioning) |
-| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning) |
-| `docs/memos/` | Working memos / scratchpad for in-flight design work (`YYYY-MM-DD-topic.md`); check here for current plans and open questions |
+| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning). User-facing only — see "Where docs go" |
 | `RELEASE_NOTES.txt` | User-facing notes mailed with binary drops |
 
 **The CLI is a shim.** It parses arguments and formats engine results; it
@@ -37,7 +38,7 @@ never reads or writes state files, never imports `registry`, `eventlog` or
 `fsutil`, and never parses on-disk timestamps. Check with:
 
 ```bash
-grep -rnE 'tokimeki/(registry|eventlog|fsutil)"|os\.(ReadFile|Open|ReadDir)\(|json\.Unmarshal|time\.Parse\(' cmd tui display | grep -v _test
+grep -rnE 'tokimeki/(registry|eventlog|fsutil|jobschema)"|os\.(ReadFile|Open|ReadDir)\(|json\.Unmarshal|time\.Parse\(' cmd tui display | grep -v _test
 ```
 
 The only expected match is `events --since` parsing the user's argument.
@@ -47,6 +48,17 @@ errors (`client.CodeOf`); conversion to human units happens in `display/`.
 Behavior changes to queueing, runners, on-disk state, or the protocol belong
 in the engine repo, not here. If a CLI feature needs new engine behavior,
 make the engine change first (see "Working alongside the engine").
+
+## Where docs go
+
+| Content | Location |
+|---|---|
+| Internal behaviour: protocol, filesystem layout, `meta.json` schema, job environment contract, design memos, plans | Engine repo `docs/` (`tokimeki-engine/docs`) |
+| Anything a user sees: commands, flags, output and JSON schemas, config files, recipes, build/install | This repo's `docs/` and `README.md` — keep it to what a user needs; don't describe engine internals |
+| Python package specifics | `tokimeki-py/docs` |
+
+Design memos and in-flight plans live in the engine repo
+(`docs/memos/`, `docs/superpowers/plans/`).
 
 ## Commands
 
@@ -103,6 +115,9 @@ and bumping the pin.
 - Human output is colorized only on a TTY and respects `NO_COLOR`; tables use
   local time (`TZ`). `--json` prints the engine result types unchanged
   (schema in `docs/USAGE.md`), and errors as the coded envelope.
+- A command that takes its arguments as JSON does so with `--from-json FILE`;
+  `--from-json -` reads the JSON from stdin. Use this flag name for every such
+  command (not `--input`, `--spec`, etc.).
 - Run `gofmt` on files you touch.
 - Build artifacts (`tokimeki-linux-*`, tarballs) are not tracked; don't commit
   them.
