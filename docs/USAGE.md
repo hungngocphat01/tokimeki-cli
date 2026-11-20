@@ -94,7 +94,7 @@ JSON output (`--json`) uses Unix nanosecond timestamps and is timezone-independe
 | `submit` | Queue scripts or an inline command; supports `--live`, `--wait`, `--quiet`, `--json` |
 | `ps` | List running/queued jobs |
 | `runners` | List runners, their busy compute slots (`BUSY 2/3`) and heartbeat status |
-| `group <name>` | A group's counts and jobs; `--json` for coordinators to poll, `--wait` to block until its compute jobs finish |
+| `group <name>` | A group's counts and jobs; `--json` for coordinators to poll, `--wait` to block until its jobs finish |
 | `ls` | `ps` + `runners` together |
 | `top` | One-shot dashboard combining runners + jobs + recent jobs (use `watch -n 3 tok top` for auto-refresh) |
 | `stats` | Snapshot of CPU/RAM/GPU usage across all running jobs |
@@ -335,9 +335,11 @@ tok group "$G" --wait --poll 60s > /dev/null
 python merge.py
 ```
 
-`tok group NAME --wait` blocks until no compute job in the group is queued,
-running or retrying, then prints the report (`--json` for the full report).
-`--poll` sets how often it checks (default 1m).
+`tok group NAME --wait` blocks until no job in the group is queued, running
+or retrying, other than the job calling it (so a coordinator can wait on its
+own group), then prints the report (`--json` for the full report). `--poll`
+sets how often it checks (default 1m). A retry that was cancelled or removed
+stops counting a couple of minutes after the failure it would have retried.
 
 `compute.active` counts queued, running and retrying compute jobs only, so the
 coordinator never waits on itself. `retrying` is a failed or crashed job whose
@@ -779,9 +781,9 @@ one line like
 warning: 3 jobs use a deprecated meta.json schema (1); upgraded to schema 2 in memory
 ```
 
-A job's record is converted for good the next time it changes (it runs, is
-killed, cancelled or retried); finished old jobs keep the warning until
-`tok gc` removes them. A record written by a newer tokimeki is skipped in
+A job's record is converted for good the next time it changes (it starts,
+finishes or is killed); finished old jobs keep the warning until `tok gc`
+removes them. A record written by a newer tokimeki is skipped in
 listings and refused by single-job commands (`invalid_state`). Run every
 runner and every `tok` on the cluster at the same version: an older `tok`
 rewriting a new record loses what it doesn't understand.

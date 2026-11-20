@@ -131,7 +131,7 @@ Commands at a glance:
 - `tokimeki ps` / `ls`: inspect queued and running jobs
 - `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
 - `tokimeki submit`: submit scripts, an inline command, or a JSON request (`--from-json`; `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `-g/--group`, `-C/--coordinator`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
-- `tokimeki group <name>`: a group's counts and jobs (`--json` for coordinator scripts, `--wait` to block until its compute jobs finish)
+- `tokimeki group <name>`: a group's counts and jobs (`--json` for coordinator scripts, `--wait` to block until its jobs finish)
 - `tokimeki result <job>`: print the result a job wrote
 - `tokimeki watch <job>`: block until terminal state; exit code = job's exit code
 - `tokimeki shell <node>`: open a full interactive terminal on a runner (uses TCP)

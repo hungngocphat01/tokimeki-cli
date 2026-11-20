@@ -277,9 +277,9 @@ jobs by status, failed and stopped jobs) and the ps table.
 compute.active == 0 (queued + running compute jobs); its own run is counted
 under coordinators. Jobs on a dead runner count as stopped, not active.
 
---wait blocks until no compute job in the group is active (checking every
---poll), then prints the report. Coordinators are not waited for, so a
-coordinator can wait on its own group.`,
+--wait blocks until no job in the group is queued, running or retrying,
+other than the job calling it (checking every --poll), then prints the
+report. A coordinator can wait on its own group.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			c := client.New(resolveBase())
@@ -303,7 +303,7 @@ coordinator can wait on its own group.`,
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the group report as JSON (see docs/USAGE.md)")
-	cmd.Flags().BoolVar(&wait, "wait", false, "wait until no compute job in the group is queued, running or retrying")
+	cmd.Flags().BoolVar(&wait, "wait", false, "wait until no other job in the group is queued, running or retrying")
 	cmd.Flags().DurationVar(&poll, "poll", time.Minute, "how often --wait checks the group")
 	return cmd
 }
@@ -414,6 +414,9 @@ from inside a job join that job's group unless -g is given.`,
 				if inlineCommand != "" {
 					return argError("--command cannot be used with --resubmit")
 				}
+				if fromJSON != "" {
+					return argError("--from-json cannot be used with --resubmit")
+				}
 				res, err := c.Resubmit(args[0], workerID, client.SubmitOpts{Timeout: timeout})
 				if err != nil {
 					return err
@@ -504,9 +507,7 @@ from inside a job join that job's group unless -g is given.`,
 				for i, path := range args {
 					r := req
 					r.ScriptFile = path
-					if targets[i] != "" || !changed("worker") {
-						r.Worker = targets[i]
-					}
+					r.Worker = targets[i] // -w applies only to the script after it
 					reqs = append(reqs, r)
 				}
 			}

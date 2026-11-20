@@ -7,8 +7,8 @@ the following command-line updates:
 
 * Version 0.5.0 changes how jobs are stored. Upgrade every runner and every
   tokimeki binary that shares a TOKIMEKI_HOME at the same time. Jobs from
-  older versions still list, run and resubmit; the first command that reads
-  them prints one warning:
+  older versions still list, run and resubmit; each command that reads them
+  prints one warning until they change or "tokimeki gc" removes them:
     warning: 3 jobs use a deprecated meta.json schema (1); upgraded to schema 2 in memory
 
 * Submit a job from a JSON file (or stdin with "-"):
@@ -19,7 +19,7 @@ the following command-line updates:
   JSON can also describe a Python job (type "python-uv") that runs a function
   in your uv project. Scripts are always given as files, never inline.
 
-* Wait for a group's compute jobs to finish, and read a job's result:
+* Wait for a group's jobs to finish, and read a job's result:
     tokimeki group my-sweep --wait --poll 60s
     tokimeki result JOB_ID
 

@@ -208,3 +208,43 @@ func TestResultAndGroupWait(t *testing.T) {
 		t.Fatalf("--poll 0: exit %d %q", code, out)
 	}
 }
+
+func TestSubmitWorkerTargetsPerScript(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a.sh"), filepath.Join(dir, "b.sh")
+	for _, p := range []string{a, b} {
+		if err := os.WriteFile(p, []byte("true\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cases := []struct {
+		args []string
+		want []string
+	}{
+		{[]string{"-w", "node1", a, b}, []string{"node1", ""}},
+		{[]string{a, "-w", "node2", b}, []string{"", "node2"}},
+		{[]string{"-w", "node1", a, "-w", "node2", b}, []string{"node1", "node2"}},
+	}
+	for _, tc := range cases {
+		base := t.TempDir()
+		out, errOut, code := runFull(t, base, "", append([]string{"submit", "-q", "--timeout", "1ms"}, tc.args...)...)
+		if code != 0 {
+			t.Fatalf("%v: exit %d %s %s", tc.args, code, out, errOut)
+		}
+		ids := strings.Fields(out)
+		c := client.New(base)
+		for i, id := range ids {
+			meta, _ := c.JobRecord(id)
+			if meta.WorkerID != tc.want[i] {
+				t.Errorf("%v: job %d worker %q, want %q", tc.args, i, meta.WorkerID, tc.want[i])
+			}
+		}
+	}
+}
+
+func TestResubmitRejectsFromJSON(t *testing.T) {
+	out, _, code := runFull(t, t.TempDir(), "{}", "submit", "-r", "abc", "--from-json", "-", "--json")
+	if gotCode, _ := errorEnvelope(t, out); code != 1 || gotCode != "invalid_argument" {
+		t.Fatalf("exit %d %q", code, out)
+	}
+}
