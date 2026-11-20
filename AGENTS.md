@@ -20,9 +20,10 @@ versioning.
 
 | Path | Responsibility |
 |---|---|
-| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
+| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `result`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
 | `cmd/tokimeki/render_jobs.go`, `render_runners.go` | Human tables (`ps`, `group` summary, `runners` slot use) and the `top` dashboard, rendered from engine result types |
 | `cmd/tokimeki/root.go` | Root command: global `--base`, `--verbose` (turns on engine `debug` output on stderr) |
+| `cmd/tokimeki/notices.go` | Prints engine notices: `warning: …` / `--verbose` debug lines on stderr, NDJSON on stderr with `--json`; `tok tui` holds them until exit |
 | `cmd/tokimeki/jsonout.go` | `--json` output (`writeJSON`, `writeNDJSON`) and the `{"error":{"code","message"}}` envelope; `execute()` is the entry point shared by `main` and tests |
 | `cmd/tokimeki/golden_test.go`, `testdata/` | Golden tests: every command's stdout/stderr against a static state directory (`testdata/fixture`); regenerate with `go test ./cmd/tokimeki -run TestGolden -update` and review the diff |
 | `display/` | Pure formatting helpers: colors, status glyphs, durations, sizes, timestamps, command shortening |
@@ -37,7 +38,7 @@ never reads or writes state files, never imports `registry`, `eventlog` or
 `fsutil`, and never parses on-disk timestamps. Check with:
 
 ```bash
-grep -rnE 'tokimeki/(registry|eventlog|fsutil)"|os\.(ReadFile|Open|ReadDir)\(|json\.Unmarshal|time\.Parse\(' cmd tui display | grep -v _test
+grep -rnE 'tokimeki/(registry|eventlog|fsutil|jobschema)"|os\.(ReadFile|Open|ReadDir)\(|json\.Unmarshal|time\.Parse\(' cmd tui display | grep -v _test
 ```
 
 The only expected match is `events --since` parsing the user's argument.

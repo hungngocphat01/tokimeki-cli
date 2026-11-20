@@ -91,20 +91,12 @@ Runners are polite. If a runner has been **jobless** for the manner period (defa
 
 The manner timer resets every time a job is running or queued. So if jobs keep arriving, the runner stays alive indefinitely.
 
-### Communication protocol: atomic writes
+### Shared state
 
-The shared filesystem is the communication channel between Tokimeki runners and the user (see [Interactive shell](#interactive-shell) for the one exception). A request is made by writing a file to a predetermined location, and poll for response in another location.
-
-Atomicity is achieved through a simple trick. Almost every file write in the system goes through the same primitive: write to a temp file, fsync, then rename to the final path.
-
-```text
-write(content) -> ~/.tokimeki/tmp/<random>.tmp
-fsync()
-rename() -> final destination
-```
-
-`rename()` on POSIX is atomic within the same filesystem. This guarantees no reader ever sees a half-written file. The temp directory must be on the same filesystem as the final destination for the rename to be atomic. Synchronization between workers rely on a similar trick. Note that Tokimeki might not work reliably on remote filesystems that does not obey this assumption.
-
+Runners and the CLI talk only through files under `TOKIMEKI_HOME`, so every
+node must see the same directory. Writes rely on `rename()` being atomic, which
+holds on local filesystems and NFS v3+; Tokimeki may not work reliably on
+remote filesystems that break that guarantee.
 
 ### Interactive shell
 
@@ -126,7 +118,7 @@ tokimeki shell                         runner gpu01
 - **Security:** traffic is encrypted, and the secrets are kept in a file only your user can read, so other users on the cluster can't join a session.
 - **Manner period:** an open shell keeps the runner from exiting for being jobless, so close shells you're done with.
 
-Protocol details are in [engine/README.md](engine/README.md#interactive-shell-protocol).
+Protocol details are in the engine repository (`README.md`, "Interactive Shell Protocol").
 
 ## CLI Reference
 
@@ -138,8 +130,9 @@ Commands at a glance:
 - `tokimeki runners`: list known runners and their liveness
 - `tokimeki ps` / `ls`: inspect queued and running jobs
 - `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
-- `tokimeki submit`: submit scripts or an inline command (`--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `-g/--group`, `-C/--coordinator`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
-- `tokimeki group <name>`: a group's counts and jobs (`--json` for coordinator scripts)
+- `tokimeki submit`: submit scripts, an inline command, or a JSON request (`--from-json`; `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `-g/--group`, `-C/--coordinator`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
+- `tokimeki group <name>`: a group's counts and jobs (`--json` for coordinator scripts, `--wait` to block until its compute jobs finish)
+- `tokimeki result <job>`: print the result a job wrote
 - `tokimeki watch <job>`: block until terminal state; exit code = job's exit code
 - `tokimeki shell <node>`: open a full interactive terminal on a runner (uses TCP)
 - `tokimeki exec` (`-i` for interactive): run a one-off command on a target runner
