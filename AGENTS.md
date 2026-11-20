@@ -20,7 +20,7 @@ versioning.
 
 | Path | Responsibility |
 |---|---|
-| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `result`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
+| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `result`, `report`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
 | `cmd/tokimeki/render_jobs.go`, `render_runners.go` | Human tables (`ps`, `group` summary, `runners` slot use) and the `top` dashboard, rendered from engine result types |
 | `cmd/tokimeki/root.go` | Root command: global `--base`, `--verbose` (turns on engine `debug` output on stderr) |
 | `cmd/tokimeki/notices.go` | Prints engine notices: `warning: …` / `--verbose` debug lines on stderr, NDJSON on stderr with `--json`; `tok tui` holds them until exit |
