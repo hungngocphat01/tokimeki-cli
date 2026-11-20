@@ -772,13 +772,16 @@ result` and `tok gc` work with them for you.
 ### Jobs from older versions
 
 v0.5.0 changed how job records are stored. Jobs created by v0.4 and older
-still list, run and resubmit normally; the first command that reads them
-prints one line like
+still list, run and resubmit normally. Each command that reads them prints
+one line like
 
 ```
 warning: 3 jobs use a deprecated meta.json schema (1); upgraded to schema 2 in memory
 ```
 
-A job's record is converted for good the next time it changes. Run every
+A job's record is converted for good the next time it changes (it runs, is
+killed, cancelled or retried); finished old jobs keep the warning until
+`tok gc` removes them. A record written by a newer tokimeki is skipped in
+listings and refused by single-job commands (`invalid_state`). Run every
 runner and every `tok` on the cluster at the same version: an older `tok`
 rewriting a new record loses what it doesn't understand.
