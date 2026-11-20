@@ -2,7 +2,11 @@
   {
     "job_id": "a0000007",
     "worker_id": "w-gpu",
-    "command": "bash /x/y/z.sh",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "bash /x/y/z.sh"
+    },
     "kind": "compute",
     "name": "TrainB",
     "status": "queued",
@@ -18,7 +22,11 @@
   },
   {
     "job_id": "a0000006",
-    "command": "echo hi",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "echo hi"
+    },
     "kind": "compute",
     "status": "queued",
     "effective_status": "queued",
@@ -30,7 +38,11 @@
   },
   {
     "job_id": "c0000003",
-    "command": "python train.py --config r2.yaml",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python train.py --config r2.yaml"
+    },
     "kind": "compute",
     "parent": "c0000001",
     "name": "exp",

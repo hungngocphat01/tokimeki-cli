@@ -6,7 +6,9 @@ would remove job: a0000008 (completed)
 would remove job: c0000004 (completed)
 would remove job: c0000005 (failed)
 would remove job: c0000006 (crashed)
-GC dry-run: 8 items would be removed
+would remove job: p0000001 (completed)
+would remove job: p0000002 (failed)
+GC dry-run: 10 items would be removed
 
 --stderr--
 

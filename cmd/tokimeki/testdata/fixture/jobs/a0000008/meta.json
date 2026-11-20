@@ -1,7 +1,12 @@
 {
+  "schema": 2,
   "job_id": "a0000008",
   "worker_id": "w-gpu",
-  "command": "echo garbage-start",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "echo garbage-start"
+  },
   "status": "completed",
   "submitted_at": "2026-01-05T09:00:00Z",
   "started_at": "garbage",

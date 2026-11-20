@@ -84,7 +84,7 @@ func psPID(job client.Job) string {
 
 // psCommand shortens the command and marks coordinators with "[C] ".
 func psCommand(job client.Job) string {
-	cmd := display.SmartCommand(job.Command)
+	cmd := display.SmartCommand(job.Label())
 	if job.Kind == protocol.KindCoordinator {
 		cmd = "[C] " + cmd
 	}
@@ -135,6 +135,16 @@ func jobList(jobs []client.Job) string {
 		detail := job.EffectiveStatus
 		if job.ExitCode != nil && *job.ExitCode != 0 && job.EffectiveStatus == protocol.StatusFailed {
 			detail += fmt.Sprintf(", exit %d", *job.ExitCode)
+		}
+		if job.Error != nil {
+			// What the job reported, e.g. ModuleNotFoundError.
+			reason := job.Error.Type
+			if reason == "" {
+				reason = display.Truncate(job.Error.Message, 40)
+			}
+			if reason != "" {
+				detail += ", " + reason
+			}
 		}
 		parts[i] = fmt.Sprintf("%s (%s)", job.ID, detail)
 	}
@@ -329,11 +339,11 @@ func topJobsPanel(d topData, useColor bool) string {
 	fmt.Fprintln(w, "  STATE\tJOB_ID\tWORKER\tPRIO\tCMD\tELAPSED")
 	for _, job := range running {
 		fmt.Fprintf(w, "  %s\t%s\t%s\t%d\t%s\t%s\n",
-			rGlyph, job.ID, job.Worker, job.Priority, display.Truncate(display.SmartCommand(job.Command), 30), psElapsed(job))
+			rGlyph, job.ID, job.Worker, job.Priority, display.Truncate(display.SmartCommand(job.Label()), 30), psElapsed(job))
 	}
 	for _, job := range queued {
 		fmt.Fprintf(w, "  %s\t%s\t%s\t%d\t%s\t-\n",
-			qGlyph, job.ID, dash(job.Worker), job.Priority, display.Truncate(display.SmartCommand(job.Command), 30))
+			qGlyph, job.ID, dash(job.Worker), job.Priority, display.Truncate(display.SmartCommand(job.Label()), 30))
 	}
 	w.Flush()
 	return paintPanel(strings.TrimRight(buf.String(), "\n"), useColor,
@@ -356,7 +366,7 @@ func topRecentPanel(d topData, useColor bool) string {
 		}
 		fmt.Fprintf(w, "  %s\t%s\t%s\t%s\t%s\t%s ago\n",
 			display.StatusDisplay(job.Status, false), job.ID, job.Worker, exit,
-			display.Truncate(display.SmartCommand(job.Command), 30), display.Age(d.now.Sub(time.Unix(0, job.FinishedAtNs))))
+			display.Truncate(display.SmartCommand(job.Label()), 30), display.Age(d.now.Sub(time.Unix(0, job.FinishedAtNs))))
 	}
 	w.Flush()
 	terminal := []string{protocol.StatusCompleted, protocol.StatusFailed, protocol.StatusKilled, protocol.StatusCrashed}

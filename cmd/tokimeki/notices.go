@@ -43,3 +43,26 @@ func installNotices(cmd *cobra.Command, w io.Writer, verbose bool) {
 	}
 	notice.SetHandler(noticeHandler(w, asJSON), verbose)
 }
+
+// holdWarnings collects warnings instead of printing them (debug notices are
+// dropped), for full-screen commands; the returned func prints them to w.
+func holdWarnings(w io.Writer) (replay func()) {
+	var mu sync.Mutex
+	var held []notice.Notice
+	notice.SetHandler(func(n notice.Notice) {
+		if n.Level != notice.LevelWarning {
+			return
+		}
+		mu.Lock()
+		held = append(held, n)
+		mu.Unlock()
+	}, false)
+	return func() {
+		mu.Lock()
+		defer mu.Unlock()
+		print := noticeHandler(w, false)
+		for _, n := range held {
+			print(n)
+		}
+	}
+}

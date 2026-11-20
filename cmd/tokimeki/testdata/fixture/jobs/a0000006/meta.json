@@ -1,7 +1,12 @@
 {
+  "schema": 2,
   "job_id": "a0000006",
   "worker_id": "",
-  "command": "echo hi",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "echo hi"
+  },
   "status": "queued",
   "submitted_at": "2026-01-05T12:00:00Z",
   "started_at": null,

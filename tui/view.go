@@ -106,7 +106,7 @@ func (m model) itemLabel(index int) (string, string) {
 		item := items[index]
 		name := item.Name
 		if name == "" {
-			name = item.Command
+			name = item.Label()
 		}
 		return fmt.Sprintf("%s %s %s", display.StatusDisplay(item.EffectiveStatus, true), item.ID, name), item.EffectiveStatus
 	case runnersFeature:
@@ -126,7 +126,7 @@ func (m model) itemLabel(index int) (string, string) {
 		if item.JobID != "" {
 			for _, job := range m.history {
 				if job.ID == item.JobID {
-					if name := display.SmartCommand(job.Command); name != "" {
+					if name := display.SmartCommand(job.Label()); name != "" {
 						label += "  " + name
 					}
 					break
@@ -429,7 +429,7 @@ func (m model) renderRunnerDetail(width, height int) string {
 			}
 			info = append(info, label)
 			for _, j := range selected.jobs {
-				info = append(info, fmt.Sprintf("  %s  PID %d  %s", j.label(), j.PID, cleanText(j.Command)))
+				info = append(info, fmt.Sprintf("  %s  PID %d  %s", j.label(), j.PID, cleanText(j.Label)))
 			}
 		}
 		var sampled []string

@@ -75,11 +75,11 @@ func TestGroupMissingJSONEnvelope(t *testing.T) {
 func TestCancelCoordinatorJSONHasCascade(t *testing.T) {
 	base := t.TempDir()
 	c := client.New(base)
-	coord, err := c.Submit(protocol.JobSpec{Command: "true", Kind: protocol.KindCoordinator, Name: "g"}, client.SubmitOpts{})
+	coord, err := c.Submit(client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash, Inline: "true", Coordinator: true, Group: "g"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := c.Submit(protocol.JobSpec{Command: "true", Name: "g"}, client.SubmitOpts{})
+	child, err := c.Submit(client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash, Inline: "true", Group: "g"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}

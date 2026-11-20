@@ -25,14 +25,14 @@
         "job_id": "c0000001",
         "kind": "coordinator",
         "pid": 901,
-        "command": "bash sweep.sh",
+        "label": "bash sweep.sh",
         "started_at_ns": 1767615000000000000
       },
       {
         "job_id": "c0000002",
         "kind": "compute",
         "pid": 902,
-        "command": "python train.py --config r1.yaml",
+        "label": "python train.py --config r1.yaml",
         "started_at_ns": 1767615060000000000
       }
     ]

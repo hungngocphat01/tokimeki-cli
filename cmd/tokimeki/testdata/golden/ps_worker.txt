@@ -1,12 +1,14 @@
-JOB_ID    RUNNER  PID  PRIO  GROUP   COMMAND                           STARTED              ELAPSED  STATUS
-a0000008  w-gpu   -    0     -       echo garbage-start                -                    -        ✓ completed
-a0000001  w-gpu   -    0     train   bash run.sh                       2026-01-05 10:00:05  1h23m    ✓ completed
-a0000002  w-gpu   -    5     -       python3 -u eval.py --epochs 5     2026-01-05 11:24:00  6m       ✗ failed
-a0000006  -       -    0     -       echo hi                           -                    -        ◌ queued
-a0000007  w-gpu   -    2     TrainB  bash z.sh                         -                    -        ◌ queued
-c0000003  -       -    0     exp     python train.py --config r2.yaml  -                    -        ◌ queued
-c0000004  w-gpu   -    0     exp     python train.py --config r3.yaml  2026-01-05 12:10:00  5m       ✓ completed
-c0000005  w-gpu   -    0     exp     python train.py --config r4.yaml  2026-01-05 12:10:00  2m       ✗ failed
+JOB_ID    RUNNER  PID  PRIO  GROUP   COMMAND                                 STARTED              ELAPSED  STATUS
+a0000008  w-gpu   -    0     -       echo garbage-start                      -                    -        ✓ completed
+a0000001  w-gpu   -    0     train   bash run.sh                             2026-01-05 10:00:05  1h23m    ✓ completed
+a0000002  w-gpu   -    5     -       python3 -u eval.py --epochs 5           2026-01-05 11:24:00  6m       ✗ failed
+a0000006  -       -    0     -       echo hi                                 -                    -        ◌ queued
+a0000007  w-gpu   -    2     TrainB  bash z.sh                               -                    -        ◌ queued
+c0000003  -       -    0     exp     python train.py --config r2.yaml        -                    -        ◌ queued
+c0000004  w-gpu   -    0     exp     python train.py --config r3.yaml        2026-01-05 12:10:00  5m       ✓ completed
+c0000005  w-gpu   -    0     exp     python train.py --config r4.yaml        2026-01-05 12:10:00  2m       ✗ failed
+p0000001  w-gpu   -    0     py      python-uv evident.train:run_experiment  2026-01-05 12:20:05  30m      ✓ completed
+p0000002  w-gpu   -    0     py      python-uv evident.train:run_experiment  2026-01-05 12:20:06  0m       ✗ failed
 
 --stderr--
 

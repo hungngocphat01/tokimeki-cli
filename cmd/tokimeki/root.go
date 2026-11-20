@@ -48,6 +48,7 @@ func newRootCmd() *cobra.Command {
 		add(topCmd(), "inspect"),
 		add(jobCmd(), "inspect"),
 		add(groupCmd(), "inspect"),
+		add(resultCmd(), "inspect"),
 		add(logsCmd(), "inspect"),
 		add(eventsCmd(), "inspect"),
 		add(watchCmd(), "inspect"),

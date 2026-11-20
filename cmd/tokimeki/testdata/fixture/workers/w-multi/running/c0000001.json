@@ -1,1 +1,1 @@
-{"job_id":"c0000001","kind":"coordinator","pid":901,"command":"bash sweep.sh","started_at":"2026-01-05T12:10:00Z"}
+{"job_id":"c0000001","kind":"coordinator","pid":901,"label":"bash sweep.sh","started_at":"2026-01-05T12:10:00Z"}

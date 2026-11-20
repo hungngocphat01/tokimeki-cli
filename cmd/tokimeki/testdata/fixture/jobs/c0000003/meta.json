@@ -1,1 +1,19 @@
-{"job_id":"c0000003","worker_id":"","command":"python train.py --config r2.yaml","status":"queued","submitted_at":"2026-01-05T12:09:20Z","started_at":null,"finished_at":null,"exit_code":null,"name":"exp","desc":"r2","parent":"c0000001","attempts":1}
+{
+  "schema": 2,
+  "job_id": "c0000003",
+  "worker_id": "",
+  "execute": {
+    "abi": 2,
+    "type": "bash",
+    "label": "python train.py --config r2.yaml"
+  },
+  "status": "queued",
+  "submitted_at": "2026-01-05T12:09:20Z",
+  "started_at": null,
+  "finished_at": null,
+  "exit_code": null,
+  "name": "exp",
+  "desc": "r2",
+  "parent": "c0000001",
+  "attempts": 1
+}

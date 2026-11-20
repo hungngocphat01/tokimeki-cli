@@ -2,7 +2,11 @@
   {
     "job_id": "a0000008",
     "worker_id": "w-gpu",
-    "command": "echo garbage-start",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "echo garbage-start"
+    },
     "kind": "compute",
     "status": "completed",
     "effective_status": "completed",
@@ -14,7 +18,11 @@
   {
     "job_id": "a0000001",
     "worker_id": "w-gpu",
-    "command": "bash /home/u/exp/run.sh",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "bash /home/u/exp/run.sh"
+    },
     "kind": "compute",
     "name": "train",
     "user": "u",
@@ -30,7 +38,11 @@
   {
     "job_id": "a0000002",
     "worker_id": "w-gpu",
-    "command": "python3 -u /home/u/exp/eval.py --epochs 5",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python3 -u /home/u/exp/eval.py --epochs 5"
+    },
     "kind": "compute",
     "status": "failed",
     "effective_status": "failed",
@@ -48,7 +60,11 @@
   {
     "job_id": "a0000003",
     "worker_id": "w-old",
-    "command": "sleep 1000",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "sleep 1000"
+    },
     "kind": "compute",
     "status": "killed",
     "effective_status": "killed",
@@ -64,7 +80,11 @@
   {
     "job_id": "a0000004",
     "worker_id": "w-old",
-    "command": "echo crash",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "echo crash"
+    },
     "kind": "compute",
     "status": "crashed",
     "effective_status": "crashed",
@@ -76,7 +96,11 @@
   },
   {
     "job_id": "a0000006",
-    "command": "echo hi",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "echo hi"
+    },
     "kind": "compute",
     "status": "queued",
     "effective_status": "queued",
@@ -89,7 +113,11 @@
   {
     "job_id": "a0000007",
     "worker_id": "w-gpu",
-    "command": "bash /x/y/z.sh",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "bash /x/y/z.sh"
+    },
     "kind": "compute",
     "name": "TrainB",
     "status": "queued",
@@ -106,7 +134,11 @@
   {
     "job_id": "c0000001",
     "worker_id": "w-multi",
-    "command": "bash sweep.sh",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "bash sweep.sh"
+    },
     "kind": "coordinator",
     "name": "exp",
     "status": "running",
@@ -120,7 +152,11 @@
   {
     "job_id": "c0000002",
     "worker_id": "w-multi",
-    "command": "python train.py --config r1.yaml",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python train.py --config r1.yaml"
+    },
     "kind": "compute",
     "parent": "c0000001",
     "name": "exp",
@@ -135,7 +171,11 @@
   },
   {
     "job_id": "c0000003",
-    "command": "python train.py --config r2.yaml",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python train.py --config r2.yaml"
+    },
     "kind": "compute",
     "parent": "c0000001",
     "name": "exp",
@@ -151,7 +191,11 @@
   {
     "job_id": "c0000004",
     "worker_id": "w-gpu",
-    "command": "python train.py --config r3.yaml",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python train.py --config r3.yaml"
+    },
     "kind": "compute",
     "parent": "c0000001",
     "name": "exp",
@@ -168,7 +212,11 @@
   {
     "job_id": "c0000005",
     "worker_id": "w-gpu",
-    "command": "python train.py --config r4.yaml",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python train.py --config r4.yaml"
+    },
     "kind": "compute",
     "parent": "c0000001",
     "name": "exp",
@@ -185,7 +233,11 @@
   {
     "job_id": "c0000006",
     "worker_id": "w-old",
-    "command": "python train.py --config r5.yaml",
+    "execute": {
+      "abi": 2,
+      "type": "bash",
+      "label": "python train.py --config r5.yaml"
+    },
     "kind": "compute",
     "parent": "c0000001",
     "name": "exp",
@@ -198,6 +250,67 @@
     "started_at_ns": 1767615000000000000,
     "finished_at_ns": 1767615060000000000,
     "elapsed_secs": 60
+  },
+  {
+    "job_id": "p0000001",
+    "worker_id": "w-gpu",
+    "execute": {
+      "abi": 2,
+      "type": "python-uv",
+      "label": "python-uv evident.train:run_experiment",
+      "entry": "evident.train:run_experiment",
+      "project": "/home/u/evident",
+      "cwd": "/home/u/evident",
+      "arg": {
+        "run_id": "lr0.01-s1",
+        "lr": 0.01,
+        "seed": 1
+      }
+    },
+    "kind": "compute",
+    "name": "py",
+    "desc": "lr0.01-s1",
+    "status": "completed",
+    "effective_status": "completed",
+    "exit_code": 0,
+    "attempts": 1,
+    "submitted_at_ns": 1767615600000000000,
+    "started_at_ns": 1767615605000000000,
+    "finished_at_ns": 1767617405000000000,
+    "elapsed_secs": 1800
+  },
+  {
+    "job_id": "p0000002",
+    "worker_id": "w-gpu",
+    "execute": {
+      "abi": 2,
+      "type": "python-uv",
+      "label": "python-uv evident.train:run_experiment",
+      "entry": "evident.train:run_experiment",
+      "project": "/home/u/evident",
+      "cwd": "/home/u/evident",
+      "arg": {
+        "run_id": "lr0.1-s1",
+        "lr": 0.1,
+        "seed": 1
+      }
+    },
+    "kind": "compute",
+    "name": "py",
+    "desc": "lr0.1-s1",
+    "status": "failed",
+    "effective_status": "failed",
+    "exit_code": 2,
+    "attempts": 1,
+    "submitted_at_ns": 1767615601000000000,
+    "started_at_ns": 1767615606000000000,
+    "finished_at_ns": 1767615609000000000,
+    "elapsed_secs": 3,
+    "error": {
+      "stage": "load",
+      "type": "ModuleNotFoundError",
+      "message": "No module named 'evident'"
+    }
   }
 ]
 

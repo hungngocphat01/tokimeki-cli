@@ -5,8 +5,10 @@ Usage:
   tok group <group> [flags]
 
 Flags:
-  -h, --help   help for group
-      --json   print the group report as JSON (see docs/USAGE.md)
+  -h, --help            help for group
+      --json            print the group report as JSON (see docs/USAGE.md)
+      --poll duration   how often --wait checks the group (default 1m0s)
+      --wait            wait until no compute job in the group is queued, running or retrying
 
 Global Flags:
       --base string   base directory for state (default: ~/.tokimeki)

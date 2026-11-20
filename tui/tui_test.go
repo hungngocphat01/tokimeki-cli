@@ -248,7 +248,7 @@ func TestRunnerStatsViewAndModeToggle(t *testing.T) {
 func TestActivityShowsSubmittedScriptName(t *testing.T) {
 	m := model{
 		feature: activityFeature,
-		history: []job{{Job: client.Job{ID: "job12345", Command: "/work/train_model.sh"}}},
+		history: []job{{Job: client.Job{ID: "job12345", Execute: &protocol.Execute{ABI: protocol.ExecABI, Type: protocol.ExecBash, Label: "/work/train_model.sh"}}}},
 		events:  []client.Event{{Kind: client.EventStart, JobID: "job12345", TSNs: time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC).UnixNano()}},
 	}
 	label, _ := m.itemLabel(0)
@@ -368,7 +368,7 @@ func TestStatusColorsAndLowerPaneScrolling(t *testing.T) {
 
 func TestJobActionsAndContextHelp(t *testing.T) {
 	paths := protocol.NewPaths(t.TempDir())
-	res, err := client.New(paths.Base).Submit(protocol.JobSpec{Script: "#!/bin/bash\necho hello\n", Command: "echo hello"}, client.SubmitOpts{})
+	res, err := client.New(paths.Base).Submit(client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash, Inline: "echo hello"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -519,9 +519,9 @@ func TestTUIRunnerWithTwoJobs(t *testing.T) {
 		workers: []worker{{
 			Runner: client.Runner{ID: "gpu-a", HasInfo: true, Hostname: "node-a", Alive: true, ComputeThreads: 3},
 			jobs: []runnerJob{
-				{CurrentJob: client.CurrentJob{JobID: "coord1", Kind: protocol.KindCoordinator, PID: 11, Command: "bash sweep.sh"},
+				{CurrentJob: client.CurrentJob{JobID: "coord1", Kind: protocol.KindCoordinator, PID: 11, Label: "bash sweep.sh"},
 					stats: &client.StatsSample{JobID: "coord1", CPUPercent: 1, NumProcs: 1, SampledAtNs: now}},
-				{CurrentJob: client.CurrentJob{JobID: "train1", Kind: protocol.KindCompute, PID: 12, Command: "python train.py"},
+				{CurrentJob: client.CurrentJob{JobID: "train1", Kind: protocol.KindCompute, PID: 12, Label: "python train.py"},
 					stats: &client.StatsSample{JobID: "train1", CPUPercent: 250, NumProcs: 4, SampledAtNs: now}},
 			},
 		}},
@@ -559,7 +559,7 @@ func TestKillCoordinatorActionStopsGroup(t *testing.T) {
 	if err := os.WriteFile(paths.WorkerHeartbeat("node1"), []byte(fmt.Sprintf("%d", time.Now().UnixNano())), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	child, err := c.Submit(protocol.JobSpec{Command: "true", Name: "g"}, client.SubmitOpts{})
+	child, err := c.Submit(client.SubmitRequest{ABI: protocol.ExecABI, Type: protocol.ExecBash, Inline: "true", Group: "g"}, client.SubmitOpts{})
 	if err != nil {
 		t.Fatal(err)
 	}

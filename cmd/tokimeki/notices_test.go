@@ -27,3 +27,18 @@ func TestNoticeJSONFormat(t *testing.T) {
 		t.Fatalf("output %q, want %q", got, want)
 	}
 }
+
+func TestHoldWarningsReplaysAfter(t *testing.T) {
+	var buf bytes.Buffer
+	replay := holdWarnings(&buf)
+	t.Cleanup(func() { notice.SetHandler(nil, false) })
+	notice.Warn(notice.Notice{Message: "legacy"})
+	notice.Debugf("dropped")
+	if buf.Len() != 0 {
+		t.Fatalf("printed while held: %q", buf.String())
+	}
+	replay()
+	if buf.String() != "warning: legacy\n" {
+		t.Fatalf("replayed %q", buf.String())
+	}
+}
