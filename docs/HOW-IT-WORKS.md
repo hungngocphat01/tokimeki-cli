@@ -197,7 +197,7 @@ read; they never contact a runner.
 
 ## Under the hood: Python jobs
 
-The Python package is a thin layer over the CLI: each call runs one
+The Python package (`tokimeki`, imported as `import tokimeki as tk`) is a thin layer over the CLI: each call runs one
 `tok ... --json` command, and the package writes no files.
 
 ```
@@ -227,8 +227,8 @@ group.result(job)   └─ tok result <id>         ◄── jobs/<id>/result.js
 - A Python job exits 0 when the function returns, 1 when it raises (the error
   is reported with stage `run`), and 2 when it couldn't be imported (stage
   `load`).
-- Errors from the CLI become `tokimeki.TokimekiError` with the CLI's error
-  code; CLI warnings become `tokimeki.TokimekiWarning`.
+- Errors from the CLI become `tk.TokimekiError` with the CLI's error
+  code; CLI warnings become `tk.TokimekiWarning`.
 
 ## Versions
 

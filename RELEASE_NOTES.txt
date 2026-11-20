@@ -29,7 +29,8 @@ the following command-line updates:
 
 * Python package (tokimeki-py): submit Python functions as jobs from a sweep
   coordinator, wait on the group and read their return values:
-    group = tokimeki.current_group()
+    import tokimeki as tk
+    group = tk.current_group()
     group.submit(run_experiment, cfg, desc=cfg["run_id"])
     report = group.wait()
   See the package README.
