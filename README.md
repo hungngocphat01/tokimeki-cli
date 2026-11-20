@@ -80,14 +80,6 @@ tokimeki watch <job_id> # block until it finishes
 
 `submit` copies the script at submission time, and the script starts in its own job directory rather than where you submitted it from. Put a `cd /path/to/project` at the top if it relies on relative paths.
 
-## Run a sweep
-
-A sweep, such as several learning rates for each of a few backbones, is where Tokimeki pays off most. The usual pattern is one **coordinator** per sweep: a job, submitted with `tokimeki submit -C`, that submits one job per trial, waits for them, and writes a summary. Every runner has one coordinator slot next to its `--compute-threads` executors, so a coordinator never takes an executor from its own trials, and trials go to whichever executor is free on any runner. A **group** (`-g NAME`) labels a coordinator and every job it submits, so each sweep can wait for and summarise only its own trials while all sweeps share the same runners.
-
-![Three GPU nodes, each a runner with one coordinator slot and two executors. The AlexNet coordinator on node 1 and the VGG coordinator on node 2 submit trials to the shared filesystem; node 3's coordinator slot is empty. Executors on all three nodes take trials, so AlexNet and VGG trials run mixed across all three nodes](assets/coordinators.svg)
-
-The trials are usually Python functions, so the full walkthrough, an AlexNet and a VGG sweep run side by side, is in the [Python package's README](https://github.com/hungngocphat01/tokimeki-py#run-a-sweep). For coordinators written as shell scripts, and for the group commands, see [Coordinators and groups](docs/USAGE.md#coordinators-and-groups) in the usage guide.
-
 ## Architecture
 
 Tokimeki is **masterless**. There is no coordinator process.
@@ -147,6 +139,19 @@ tokimeki shell                         runner gpu01
 - **Manner period:** an open shell keeps the runner from exiting for being jobless, so close shells you're done with.
 
 Protocol details are in the engine repository (`README.md`, "Interactive Shell Protocol").
+
+## Run a sweep
+
+This is an advanced use-case that has been introduced in Tokimeki v0.5.0.
+
+A *sweep*, such as several learning rates for each of a few backbones, is where Tokimeki pays off most. The usual pattern is one **coordinator** per sweep: a job, submitted with `tokimeki submit -C`, that submits one job per trial, waits for them, and writes a summary. This is also the main use-case of a *Tokimeki coordinator*: a script that reads the config from disk, expand and submit other compute jobs, then gather the results after everything has finished. Think of it like... a distributed *for* loop.
+
+Every *runner* has one coordinator slot next to its `--compute-threads` executors, so a coordinator never takes an executor from its own trials, and trials go to whichever executor is free on any runner. A **group** (`-g NAME`) labels a coordinator and every job it submits, so each sweep can wait for and summarise only its own trials while all sweeps share the same runners.
+
+![Three GPU nodes, each a runner with one coordinator slot and two executors. The AlexNet coordinator on node 1 and the VGG coordinator on node 2 submit trials to the shared filesystem; node 3's coordinator slot is empty. Executors on all three nodes take trials, so AlexNet and VGG trials run mixed across all three nodes](assets/coordinators.svg)
+
+The trials are usually Python functions, so the example use-case, training an AlexNet and a VGG sweep run side by side, is in the [Python package's README](https://github.com/hungngocphat01/tokimeki-py#run-a-sweep). For coordinators written as shell scripts, and for the group commands, see [Coordinators and groups](docs/USAGE.md#coordinators-and-groups) in the usage guide.
+
 
 ## CLI Reference
 
