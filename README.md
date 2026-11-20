@@ -150,7 +150,7 @@ Every *runner* has one coordinator slot next to its `--compute-threads` executor
 
 ![Three GPU nodes, each a runner with one coordinator slot and two executors. The AlexNet coordinator on node 1 and the VGG coordinator on node 2 submit trials to the shared filesystem; node 3's coordinator slot is empty. Executors on all three nodes take trials, so AlexNet and VGG trials run mixed across all three nodes](assets/coordinators.svg)
 
-The trials are usually Python functions, so the example use-case, training an AlexNet and a VGG sweep run side by side, is in the [Python package's README](https://github.com/hungngocphat01/tokimeki-py#run-a-sweep). For coordinators written as shell scripts, and for the group commands, see [Coordinators and groups](docs/USAGE.md#coordinators-and-groups) in the usage guide.
+The trials are usually Python functions, so the example use-case, training an AlexNet and a VGG sweep run side by side, is in the [Python package's README](https://github.com/hungngocphat01/tokimeki-py#running-a-hyperparameter-sweep). For coordinators written as shell scripts, and for the group commands, see [Coordinators and groups](docs/USAGE.md#coordinators-and-groups) in the usage guide.
 
 
 ## CLI Reference
@@ -165,7 +165,7 @@ Commands at a glance:
 - `tokimeki runner`: start a runner daemon on the current node (`--compute-threads N` runs N compute jobs plus one coordinator)
 - `tokimeki runners`: list known runners and their liveness
 - `tokimeki ps` / `ls`: inspect queued and running jobs
-- `tokimeki top`: live dashboard with RUNNERS / JOBS / RECENT panels (`--plain`, `--once`)
+- `tokimeki top`: one-shot summary with RUNNERS / JOBS / RECENT panels (`--plain`)
 - `tokimeki submit`: submit scripts, an inline command, or a JSON request (`--from-json`; `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `-g/--group`, `-C/--coordinator`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)
 - `tokimeki group <name>`: a group's counts and jobs (`--json` for coordinator scripts, `--wait` to block until its jobs finish)
 - `tokimeki result <job>`: print the result a job wrote
