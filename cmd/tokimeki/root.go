@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/hungngocphat01/tokimeki/debug"
 	"github.com/hungngocphat01/tokimeki/shell/session"
 	"github.com/spf13/cobra"
 )
@@ -19,15 +18,13 @@ func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
 		Use:   progName,
 		Short: "TOKIMEKI Runners — filesystem-based job submission system",
-		PersistentPreRun: func(*cobra.Command, []string) {
-			if verbose {
-				debug.SetOutput(os.Stderr)
-			}
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) {
+			installNotices(cmd, os.Stderr, verbose)
 		},
 	}
 
 	rootCmd.PersistentFlags().StringVar(&baseDir, session.FlagBase, "", "base directory for state (default: ~/.tokimeki)")
-	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "print engine debug logs on stderr")
+	rootCmd.PersistentFlags().BoolVar(&verbose, "verbose", false, "print engine debug logs on stderr (warnings are always printed)")
 
 	rootCmd.AddGroup(
 		&cobra.Group{ID: "run", Title: "Run:"},

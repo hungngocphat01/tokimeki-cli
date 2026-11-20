@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/hungngocphat01/tokimeki/client"
-	"github.com/hungngocphat01/tokimeki/debug"
+	"github.com/hungngocphat01/tokimeki/notice"
 	"github.com/hungngocphat01/tokimeki/protocol"
 )
 
@@ -56,11 +56,11 @@ func TestRunnerRejectsZeroThreads(t *testing.T) {
 }
 
 func TestVerboseEnablesDebug(t *testing.T) {
-	t.Cleanup(func() { debug.SetOutput(nil) })
+	t.Cleanup(func() { notice.SetHandler(nil, false) })
 	if _, code := runJSON(t, t.TempDir(), "--verbose", "ps", "--json"); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if !debug.Enabled() {
+	if !notice.DebugEnabled() {
 		t.Fatal("--verbose did not enable debug output")
 	}
 }
