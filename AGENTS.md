@@ -29,8 +29,7 @@ versioning.
 | `cmd/tokimeki/version.go` | `tokimeki version`: CLI version (ldflags), engine version (`version.Engine()`), commit, branch, build time |
 | `tui/` | `tok tui` dashboard: `tui.go` model/update, `view.go` rendering, `data.go` loading through the engine `client`, `actions.go` kill/cancel/shell actions |
 | `scripts/check-engine.sh` | Release guard for the engine pin (see Versioning) |
-| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning) |
-| `docs/memos/` | Working memos / scratchpad for in-flight design work (`YYYY-MM-DD-topic.md`); check here for current plans and open questions |
+| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning). User-facing only — see "Where docs go" |
 | `RELEASE_NOTES.txt` | User-facing notes mailed with binary drops |
 
 **The CLI is a shim.** It parses arguments and formats engine results; it
@@ -48,6 +47,17 @@ errors (`client.CodeOf`); conversion to human units happens in `display/`.
 Behavior changes to queueing, runners, on-disk state, or the protocol belong
 in the engine repo, not here. If a CLI feature needs new engine behavior,
 make the engine change first (see "Working alongside the engine").
+
+## Where docs go
+
+| Content | Location |
+|---|---|
+| Internal behaviour: protocol, filesystem layout, `meta.json` schema, job environment contract, design memos, plans | Engine repo `docs/` (`tokimeki-engine/docs`) |
+| Anything a user sees: commands, flags, output and JSON schemas, config files, recipes, build/install | This repo's `docs/` and `README.md` — keep it to what a user needs; don't describe engine internals |
+| Python package specifics | `tokimeki-py/docs` |
+
+Design memos and in-flight plans live in the engine repo
+(`docs/memos/`, `docs/superpowers/plans/`).
 
 ## Commands
 
@@ -104,6 +114,9 @@ and bumping the pin.
 - Human output is colorized only on a TTY and respects `NO_COLOR`; tables use
   local time (`TZ`). `--json` prints the engine result types unchanged
   (schema in `docs/USAGE.md`), and errors as the coded envelope.
+- A command that takes its arguments as JSON does so with `--from-json FILE`;
+  `--from-json -` reads the JSON from stdin. Use this flag name for every such
+  command (not `--input`, `--spec`, etc.).
 - Run `gofmt` on files you touch.
 - Build artifacts (`tokimeki-linux-*`, tarballs) are not tracked; don't commit
   them.
