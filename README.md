@@ -122,6 +122,9 @@ Protocol details are in the engine repository (`README.md`, "Interactive Shell P
 
 ## CLI Reference
 
+How submitting, runners, slots, groups and results fit together, and which
+files carry them: **[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md)**.
+
 For a complete usage guide with examples, flags, and recipes (dependencies, retries, priority, resource hints, interactive exec, JSON output, event log, shell completion), see **[docs/USAGE.md](docs/USAGE.md)**.
 
 Commands at a glance:

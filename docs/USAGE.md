@@ -1,6 +1,6 @@
 # Tokimeki — Usage Guide
 
-CLI reference and recipes for the `tokimeki` binary. See `README.md` for architecture; this file is "what can I do with it, and how."
+CLI reference and recipes for the `tokimeki` binary. See [HOW-IT-WORKS.md](HOW-IT-WORKS.md) for how jobs, runners and groups fit together; this file is "what can I do with it, and how."
 
 ## Table of contents
 

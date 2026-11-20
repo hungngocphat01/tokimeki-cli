@@ -30,7 +30,7 @@ versioning.
 | `cmd/tokimeki/version.go` | `tokimeki version`: CLI version (ldflags), engine version (`version.Engine()`), commit, branch, build time |
 | `tui/` | `tok tui` dashboard: `tui.go` model/update, `view.go` rendering, `data.go` loading through the engine `client`, `actions.go` kill/cancel/shell actions |
 | `scripts/check-engine.sh` | Release guard for the engine pin (see Versioning) |
-| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning). User-facing only — see "Where docs go" |
+| `docs/` | `HOW-IT-WORKS.md` (how jobs, runners, groups and files fit together, for users), `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning). User-facing only — see "Where docs go" |
 | `RELEASE_NOTES.txt` | User-facing notes mailed with binary drops |
 
 **The CLI is a shim.** It parses arguments and formats engine results; it
