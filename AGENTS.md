@@ -60,6 +60,61 @@ make the engine change first (see "Working alongside the engine").
 Design memos and in-flight plans live in the engine repo
 (`docs/memos/`, `docs/superpowers/plans/`).
 
+## Diagrams
+
+README figures are TikZ, not Mermaid. Sources are in
+`assets/diagrams/tikz/`, one `.tex` per figure, sharing `style.tex`
+(colours, styles and the `\machine`, `\proc`, `\tray`, `\diskslab` macros).
+
+```bash
+assets/diagrams/tikz/render.sh                # every figure → assets/<name>.svg
+assets/diagrams/tikz/preview.sh OUTDIR name   # SVG → PNG via Quick Look (macOS), to check the result
+```
+
+`render.sh` needs `latex` and `dvisvgm` (TeX Live). It goes through DVI, so
+Ghostscript is not needed; glyphs become paths, so the SVGs carry no fonts.
+Render straight into `assets/` and look at every render before reporting it
+done. `coordinators.svg`, `loops.svg` and `python-job.svg` are used by the
+Python package's README: copy them to `tokimeki-py/assets/` after
+re-rendering.
+
+What to draw:
+
+- **One figure, one situation.** A reader glancing at it should see how
+  that part of the system works. The README text around a figure describes
+  exactly the situation drawn (e.g. "three runners, two coordinators
+  submitted, so node 3 has none").
+- **User-level concepts only:** physical nodes, runners, jobs and the
+  scripts they come from, the queue, the shared filesystem, and inside a
+  runner the coordinator and executors. No file names, paths or JSON;
+  `inbox.svg` is the one figure where inbox/outbox detail is the point.
+- **No text that isn't a label.** No captions, notes or disclaimers in the
+  image; explanation goes in the README prose. A legend is only for an
+  encoding that labels can't carry, kept small at the bottom left, like the
+  completed / running / pending key in `loops.svg`.
+
+How to draw it:
+
+- A physical node is one rectangle with a dark header (`\machine`); the
+  runner is named in that header or drawn as the green box inside
+  (`\proc`). The shared filesystem is the grey slab along the bottom
+  (`\diskslab`); places on it are `\tray`s.
+- Things running inside a runner (coordinator, executors) are stacked
+  vertically inside the node, not spread horizontally.
+- Jobs are cards (`card`); jobs of different groups are told apart by
+  colour (`groupA`, `groupB`), the coordinator by a thicker border, a free
+  slot by a dashed outline.
+- Solid arrow = writes a file, dashed arrow = reads one. Every exchange
+  between nodes goes through the filesystem slab, never node to node.
+- Label arrows with a short verb (`submit`, `take`) at the end of the line
+  nearest the filesystem, not in the middle. Numbered circles (`num`) mark
+  steps when order matters.
+- No overlaps: lines never cross labels, boxes never touch, and lanes are
+  nested so they don't cross each other.
+- Keep it compact: small gaps between nodes and the slab, no empty space
+  inside boxes.
+- Boxes have square corners; don't add `rounded corners`.
+
 ## Commands
 
 ```bash

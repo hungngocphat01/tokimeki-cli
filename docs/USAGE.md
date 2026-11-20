@@ -154,8 +154,13 @@ on the runner.
 
 ### Run a runner
 
+One experiment may not use all of a GPU. If memory and other resources allow,
+give a runner two or three places for compute jobs so several trials can run
+on that node at once. The runner fills free places from the shared queue;
+the jobs may belong to the same sweep or different ones.
+
 ```bash
-tokimeki runner --id w-gpu01 --poll 2s --manner-period 1h --ttl 6d23h
+tokimeki runner --id w-gpu01 --compute-threads 3 --poll 2s --manner-period 1h --ttl 6d23h
 ```
 
 Flags:
@@ -225,12 +230,12 @@ echo '{"abi": 2, "type": "bash", "script_file": "train.sh", "group": "g"}' | tok
 {
   "abi": 2,
   "type": "python-uv",
-  "entry": "evident.train:run_experiment",
-  "project": "/home/u/evident",
-  "cwd": "/home/u/evident",
-  "arg": {"run_id": "lr0.01-s1", "lr": 0.01},
-  "group": "c100-redl",
-  "desc": "lr0.01-s1",
+  "entry": "model_trainer.jobs:train_trial",
+  "project": "/shared/projects/model_trainer",
+  "cwd": "/shared/projects/model_trainer",
+  "arg": {"backbone": "alexnet", "lr": 0.01},
+  "group": "alexnet-lr-01",
+  "desc": "lr=0.01",
   "retries": 1
 }
 ```
@@ -289,17 +294,34 @@ are submitted first, then their logs are streamed in submission order.
 
 ### Coordinators and groups
 
-A **compute** job (the default) does the work. A **coordinator** job
-(`submit -C`) does no compute: it submits compute jobs, polls its group, and
-combines their results — for example a training driver that expands a grid
-into one job per config, so any free slot on any runner can take the next
-config.
+For one backbone, a shell loop can train each learning rate sequentially on
+one GPU node. Alternatively, write and submit one shell script per learning
+rate, then gather the results yourself. That may be manageable for AlexNet
+alone; adding VGG and ViT multiplies the scripts and results to track. If
+you return to one loop per backbone, the AlexNet runner can sit idle after its
+loop finishes while ViT still has trials waiting on another node.
+
+A **coordinator** job (`submit -C`) is a job that submits other jobs. It can
+wait for the jobs in its group with `tok group NAME --wait`, then collect
+their results. In the backbone sweep example, it submits one training job
+per learning rate and writes a summary after they finish. Each training job
+runs in an **executor** on whichever runner has room, including a runner
+hosting another backbone's coordinator. One group name per backbone keeps
+the summaries separate. The [Python package's README](https://github.com/hungngocphat01/tokimeki-py#run-a-sweep)
+walks through the whole sweep with Python trials.
+
+On a compute node, start a runner:
 
 ```bash
-tok runner --compute-threads 3                 # 1 coordinator + 3 compute slots
-tok submit -C -g c100-redl sweep.sh            # the coordinator
-tok group c100-redl                            # summary + ps table
-tok group c100-redl --json                     # full report for scripts
+tok runner --compute-threads 3  # one coordinator alongside up to three training jobs
+```
+
+From a login node, submit the coordinator and check its group:
+
+```bash
+tok submit -C -g alexnet-lr-01 sweep_alexnet.sh
+tok group alexnet-lr-01          # progress for this backbone
+tok group alexnet-lr-01 --json   # full report for scripts
 ```
 
 - **Groups are labels.** A group is every job carrying the name, until `tok gc`
@@ -321,20 +343,26 @@ tok group c100-redl --json                     # full report for scripts
   should read `tok group --json` and submit only what is missing (Tokimeki does
   not deduplicate).
 
-A coordinator's loop, in shell:
+A coordinator can also be a plain shell script. This one submits one
+trial per learning rate, waits for its group, and writes a summary; it is
+submitted with `tok submit -C -g alexnet-lr-01 sweep_alexnet.sh`:
 
 ```bash
 #!/bin/bash
-set -euo pipefail
-G=$TOKIMEKI_GROUP
-have=$(tok group "$G" --json | jq -r '.jobs[].desc')
-for cfg in configs/run-*.yaml; do
-  id=$(basename "$cfg" .yaml)
-  grep -qx "$id" <<<"$have" || tok submit -q --desc "$id" -c "python train.py --config $cfg --resume"
+set -e
+cd /shared/projects/model_trainer
+mkdir -p results
+for lr in 0.01 0.001 0.0001; do
+    tok submit -c "cd /shared/projects/model_trainer && python train.py --backbone alexnet --lr $lr"
 done
-tok group "$G" --wait --poll 60s > /dev/null
-python merge.py
+tok group "$TOKIMEKI_GROUP" --wait
+python summarize.py --backbone alexnet > results/alexnet-summary.csv
 ```
+
+Here `train.py` writes each trial's result into the project's shared
+`results/` directory and `summarize.py` reads them back into one CSV; both
+stand in for your own code. Check that every trial produced a result before
+summarising, since a stopped trial does not hold up `--wait`.
 
 `tok group NAME --wait` blocks until no job in the group is queued, running
 or retrying, other than the job calling it (so a coordinator can wait on its
@@ -428,7 +456,7 @@ On a coordinator, both also stop its group and report it:
 
 ```
 Kill signal 15 sent to job 3f2a9c01
-Group c100-redl: cancelled 12, killed 3
+Group alexnet-lr-01: cancelled 12, killed 3
 ```
 
 A job that could not be stopped (for example one on a runner that is no

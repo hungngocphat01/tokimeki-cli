@@ -56,6 +56,11 @@ marks them **crashed** and retries those that allow it.
 
 ## Runners and slots
 
+One training run may leave much of a GPU unused. When the models fit in
+memory, a runner can execute two or three jobs at once on the same node.
+Its free compute slots take jobs from the shared queue, including jobs
+submitted by coordinators running on other nodes.
+
 ```
 tok runner --compute-threads 3
 ├── 1 coordinator slot
@@ -65,10 +70,10 @@ tok runner --compute-threads 3
 - **Compute jobs** (the default) do the work: training runs, evaluations,
   scripts. A runner runs up to `--compute-threads` of them side by side, so
   several runs can share one GPU node.
-- **Coordinator jobs** (`tok submit -C`) do no heavy work: they submit
-  compute jobs, wait for them and combine their results. Each runner runs at
-  most one, in a slot of its own, so a coordinator never takes a compute
-  slot from the work it is waiting for.
+- **Coordinator jobs** (`tok submit -C`) are jobs that submit other jobs.
+  They can wait for the jobs in their group and then collect their results.
+  Each runner runs at most one coordinator, in a slot of its own, so waiting
+  does not take a compute slot from the submitted jobs.
 - `tok runners` shows each runner's busy compute slots (`BUSY 2/3`).
 - **Manner period.** A runner with nothing to do exits after
   `--manner-period` (default 1h), handing the node back to the cluster's
@@ -79,19 +84,24 @@ tok runner --compute-threads 3
 A **group** is a label on jobs (`-g NAME`). It has no other existence: the
 group is simply every job carrying that label, until `tok gc` removes them.
 
-The usual pattern for a sweep:
+For example, AlexNet, VGG, and ViT can each have a separate learning-rate
+grid and a separate group. The AlexNet group looks like this:
 
 ```
-tok submit -C -g sweep1 sweep.sh
-   └─ coordinator: expands the grid, then for each config:
-        tok submit --desc <run_id> ...        (joins group sweep1 automatically)
-      tok group sweep1 --wait                 (until no job but itself is active)
-      merge the results
+tok submit -C -g alexnet-lr-01 ...
+   └─ coordinator: submits one job per learning rate
+        tok submit --desc lr=0.01 ...         (joins alexnet-lr-01 automatically)
+        tok submit --desc lr=0.001 ...
+      tok group alexnet-lr-01 --wait          (waits for those jobs)
+      write results/alexnet-lr-01/summary.csv
 ```
 
 - Jobs a coordinator submits join its group and record it as their parent.
 - Whichever runner has a free compute slot takes the next config, so no node
   sits idle while another still has a backlog.
+- The coordinator can run on any runner. Each runner can host at most one
+  coordinator at a time, alongside its compute jobs. The coordinator does
+  not need to know which runner executes each learning rate.
 - `tok group NAME` shows the group's counts, its failed and stopped jobs, and
   its jobs. `tok kill` or `tok cancel` on the coordinator stops the whole
   group.
@@ -206,12 +216,12 @@ your coordinator (Python)                                 a runner with a free c
 group.submit(run_experiment, cfg)
   └─ tok submit --from-json -         ──► jobs/<id>/meta.json:
        {"type": "python-uv",                execute = {type: python-uv,
-        "entry": "evident.train:run_experiment",       entry, project, cwd, arg: cfg}
+        "entry": "model_trainer.jobs:train_trial",   entry, project, cwd, arg: cfg}
         "arg": cfg, ...}
                                                        ──► uv run --project <project> --no-sync \
-                                                              python -m tokimeki.call evident.train:run_experiment
+                                                              python -m tokimeki.call model_trainer.jobs:train_trial
                                                              1. tok job $TOKIMEKI_JOB_ID      (reads arg)
-                                                             2. import evident.train; run_experiment(cfg)
+                                                             2. import model_trainer.jobs; train_trial(cfg)
                                                              3. tok report --from-json -      (return value or exception)
 group.wait()        └─ tok group <g> --wait
 group.result(job)   └─ tok result <id>         ◄── jobs/<id>/result.json

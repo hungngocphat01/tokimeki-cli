@@ -1,10 +1,14 @@
-<img src="assets/tokimeki.jpeg" style="max-width: 768px;">
+<img src="assets/tokimeki.jpeg" alt="Tokimeki" style="max-width: 768px;">
 
 ## ❓ What is this?
 
 A masterless, filesystem-based job runner.
 
 Tokimeki lets you submit and manage jobs across nodes that share a common filesystem but have no direct network connectivity. All communication happens through the shared filesystem, with no master node. The one exception is `tokimeki shell`: it sets up through the filesystem, then uses a direct TCP connection for the interactive terminal.
+
+![A script on the login node is submitted into a queue on the shared filesystem; a runner on each of three GPU nodes takes the next job from that queue](assets/overview.svg)
+
+A **job** is one piece of work that a runner executes. Tokimeki currently supports two kinds: a shell script, and a call to a Python function with one argument, whose return value comes back to whoever submitted it. This CLI submits scripts, either a file (`tokimeki submit train.sh`) or an inline command (`tokimeki submit -c "..."`). To submit Python functions and collect their return values, use the [Python package](https://github.com/hungngocphat01/tokimeki-py).
 
 ## ❓ Why Tokimeki?
 
@@ -36,7 +40,7 @@ tokimeki kill <old_job_id>
 tokimeki submit eval-script.sh
 ```
 
-The runner is polite and has good manners. It ends its lifecycle after being jobless for 1 hour (default), releasing the node to the underlying job scheduler. It does not work outside the limit commited to the underlying (e.g. PBS) scheduler.
+The runner is polite and has good manners. It ends its lifecycle after being jobless for 1 hour (default), releasing the node to the underlying job scheduler. It does not work outside the limit committed to the underlying (e.g. PBS) scheduler.
 
 ## Etymology
 
@@ -51,12 +55,12 @@ This project was developed autonomously by Claude Code and OpenAI Codex based on
 ## 💻 Quick start
 
 ```bash
-# Build
-go build -o tokimeki \
-  -ldflags "-X main.versionCommit=$(git rev-parse --short=12 HEAD) -X main.versionBranch=$(git rev-parse --abbrev-ref HEAD) -X main.versionBuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  ./cmd/tokimeki
-
+# Build (needs access to the private engine module, see docs/BUILD.md)
+make
 tokimeki version
+
+# Every node must see the same state directory
+export TOKIMEKI_HOME=/shared/tokimeki
 
 # On a compute node: start a runner
 tokimeki runner --id node01
@@ -71,13 +75,26 @@ tokimeki ps -a          # include finished jobs
 tokimeki tui            # interactive live jobs, logs, and resources
 tokimeki logs <job_id>  # view output
 tokimeki job <job_id>   # job details
+tokimeki watch <job_id> # block until it finishes
 ```
+
+`submit` copies the script at submission time, and the script starts in its own job directory rather than where you submitted it from. Put a `cd /path/to/project` at the top if it relies on relative paths.
+
+## Run a sweep
+
+A sweep, such as several learning rates for each of a few backbones, is where Tokimeki pays off most. The usual pattern is one **coordinator** per sweep: a job, submitted with `tokimeki submit -C`, that submits one job per trial, waits for them, and writes a summary. Every runner has one coordinator slot next to its `--compute-threads` executors, so a coordinator never takes an executor from its own trials, and trials go to whichever executor is free on any runner. A **group** (`-g NAME`) labels a coordinator and every job it submits, so each sweep can wait for and summarise only its own trials while all sweeps share the same runners.
+
+![Three GPU nodes, each a runner with one coordinator slot and two executors. The AlexNet coordinator on node 1 and the VGG coordinator on node 2 submit trials to the shared filesystem; node 3's coordinator slot is empty. Executors on all three nodes take trials, so AlexNet and VGG trials run mixed across all three nodes](assets/coordinators.svg)
+
+The trials are usually Python functions, so the full walkthrough, an AlexNet and a VGG sweep run side by side, is in the [Python package's README](https://github.com/hungngocphat01/tokimeki-py#run-a-sweep). For coordinators written as shell scripts, and for the group commands, see [Coordinators and groups](docs/USAGE.md#coordinators-and-groups) in the usage guide.
 
 ## Architecture
 
-Tokimeki is **masterless**. There is no coordinator process. 
+Tokimeki is **masterless**. There is no coordinator process.
 
-Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. Currently, one runner executes only one job at a time. Only `tokimeki shell` uses networking; everything else, including `exec`, stays on the filesystem protocol.
+Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. A runner executes up to `--compute-threads` compute jobs at a time (default 1) plus at most one coordinator job. Only `tokimeki shell` uses networking; everything else, including `exec`, stays on the filesystem protocol.
+
+A coordinator (see [Run a sweep](#run-a-sweep)) is just a job that happens to submit other jobs; it is not a master, and if it dies, the jobs it already submitted keep running.
 
 This means:
 
@@ -91,12 +108,23 @@ Runners are polite. If a runner has been **jobless** for the manner period (defa
 
 The manner timer resets every time a job is running or queued. So if jobs keep arriving, the runner stays alive indefinitely.
 
-### Shared state
+### Everything goes through files
 
-Runners and the CLI talk only through files under `TOKIMEKI_HOME`, so every
-node must see the same directory. Writes rely on `rename()` being atomic, which
-holds on local filesystems and NFS v3+; Tokimeki may not work reliably on
-remote filesystems that break that guarantee.
+The login node and the runners never open a connection to each other. Every exchange between them is one side writing a file under `TOKIMEKI_HOME` and the other side reading it later, so every node must see the same directory.
+
+Work that any runner may do goes into the shared queue, as in the first figure: `tok submit` writes the job there, and whichever runner has a free executor takes it. A message meant for one particular runner, such as `tok kill`, `tok exec`, or the setup of `tok shell`, goes into that runner's own inbox instead. Each runner checks its inbox every couple of seconds, acts on what it finds, and writes the reply into its outbox, which the client keeps reading until the reply shows up.
+
+![tok kill on the login node writes a request into gpu02's inbox on the shared filesystem; gpu02 reads it, stops the job, and writes a reply into its outbox, which the login node reads. gpu01 and gpu03 only ever read their own inboxes](assets/inbox.svg)
+
+The rest works the same way. Runners write their heartbeat, job status, and logs into the shared directory, and `tok ps`, `tok runners`, and `tok logs` read them from there. The only exception is the terminal session of `tok shell`, which is set up through the inbox and then runs over TCP (see [Interactive shell](#interactive-shell)).
+
+Every write goes to a temporary file first and is then renamed into place, so a reader never sees half a file. This relies on `rename()` being atomic, which holds on local filesystems and NFS v3+; Tokimeki may not work reliably on remote filesystems that break that guarantee.
+
+### When a runner disappears
+
+Allocations expire and nodes go offline. Queued jobs are not tied to any runner, so they simply start elsewhere. Jobs that were already running on the lost runner stop with it; Tokimeki does not migrate a job mid-run. Those jobs show as **stopped** in `tokimeki ps` until a runner with the same `--id` starts again, which then marks them **crashed** and requeues the ones submitted with `--retries`.
+
+Jobs on other runners keep going, even when the lost job was their coordinator. A `tokimeki group --wait` can therefore return while a member is still stopped, so a coordinator should check that every expected result exists before writing its summary. A retried coordinator should likewise read `tokimeki group --json` and submit only the trials that are missing, since Tokimeki does not deduplicate.
 
 ### Interactive shell
 
@@ -150,6 +178,8 @@ Commands at a glance:
 - `tokimeki version`: print build metadata
 
 The binary can also be aliased to `tok` for brevity (`ln -s "$(which tokimeki)" ~/.local/bin/tok`); `tok` and `tokimeki` are interchangeable.
+
+If your coordinator is Python, the [tokimeki Python package](https://github.com/hungngocphat01/tokimeki-py) submits Python functions as jobs and reads back their return values, instead of passing results through files.
 
 ## Configuration
 

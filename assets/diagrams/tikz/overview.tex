@@ -1,0 +1,32 @@
+\documentclass[tikz,dvisvgm,border=0pt]{standalone}
+\input{style}
+\begin{document}
+\begin{tikzpicture}[fig]
+  \tikzset{qcard/.style={card, minimum width=1.5cm}}
+  % shared filesystem with the queue
+  \diskslab{0}{0}{16.1}{2.0}
+  \tray{0.3}{0.3}{5.5}{1.75}{queue}
+  \node[qcard, draw=userline, line width=1.1pt] (new) at (1.15,0.85) {train.sh};
+  \node[qcard] at (2.85,0.85) {plot.sh};
+  \node[qcard] at (4.55,0.85) {sweep.sh};
+
+  % login node with the user's script
+  \machine{0}{2.8}{3.4}{4.9}{login node}
+  \node[script] (script) at (1.15,3.55) {train.sh};
+
+  % GPU nodes, each running a runner, each runner running a job
+  \foreach \i/\x/\j in {1/3.8/prep.sh, 2/8.0/eval.sh, 3/12.2/test.sh} {
+    \machine{\x}{2.8}{\x+3.9}{4.9}{GPU node \i}
+    \proc{\x+0.2}{3.0}{\x+3.7}{4.25}{runner}
+    \node[card, minimum width=1.5cm] at (\x+1.3,3.5) {\j};
+  }
+
+  % submit: the script becomes a job in the queue
+  \draw[write, draw=userline] (script.south) -- (new.north) node[lbl, pos=0.35, text=userline] {tok submit};
+  % any runner takes the next job from the queue
+  \draw[read, draw=runline, -] (5.5,0.85) -- (14.9,0.85);
+  \foreach \x in {6.5, 10.7, 14.9}
+    \draw[read, draw=runline] (\x,0.85) -- (\x,2.98);
+  \node[lbl, text=runline, fill=diskfill] at (8.6,0.85) {next free runner takes it};
+\end{tikzpicture}
+\end{document}

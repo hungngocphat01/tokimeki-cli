@@ -1,0 +1,36 @@
+\documentclass[tikz,dvisvgm,border=0pt]{standalone}
+\input{style}
+\begin{document}
+\begin{tikzpicture}[fig]
+  \tikzset{job/.style={card, minimum width=2.5cm, minimum height=0.66cm, anchor=east},
+           free/.style={job, draw=rule, dash pattern=on 2.5pt off 1.8pt, fill=white},
+           role/.style={font=\footnotesize, text=muted, anchor=west}}
+
+  \diskslab{0}{0.9}{17.5}{1.9}
+
+  % \gpunode{n}{x}{coordinator style}{coordinator text}{exec 1 style}{exec 1}{exec 2 style}{exec 2}
+  \newcommand{\gpunode}[8]{%
+    \machine{#2}{2.6}{#2+4.7}{6.2}{GPU node #1 \ \normalfont runner}
+    \node[role] at (#2+0.15,5.1) {coordinator};
+    \node[role] at (#2+0.15,4.15) {executor};
+    \node[role] at (#2+0.15,3.2) {executor};
+    \node[#3] at (#2+4.5,5.1) {#4};
+    \node[#5] at (#2+4.5,4.15) {#6};
+    \node[#7] at (#2+4.5,3.2) {#8};
+    % executors take trials from the shared filesystem
+    \draw[read, draw=runline, -] (#2+5.0,1.9) -- (#2+5.0,4.15);
+    \draw[read, draw=runline] (#2+5.0,4.15) -- (#2+4.52,4.15);
+    \draw[read, draw=runline] (#2+5.0,3.2) -- (#2+4.52,3.2);
+    \node[font=\footnotesize, text=runline, anchor=east] at (#2+4.95,2.25) {take};
+  }
+  \gpunode{1}{0}{job, groupA, line width=1.6pt}{sweep alexnet}{job, groupA}{alexnet 1e-2}{job, groupB}{vgg 1e-3}
+  \gpunode{2}{6.1}{job, groupB, line width=1.6pt}{sweep vgg}{job, groupB}{vgg 1e-2}{job, groupA}{alexnet 1e-3}
+  \gpunode{3}{12.2}{free}{}{job, groupA}{alexnet 1e-4}{job, groupB}{vgg 1e-4}
+
+  % the two coordinators submit their trials
+  \foreach \x/\c in {0/orangeline, 6.1/blueline} {
+    \draw[write, draw=\c] (\x+4.52,5.1) -- (\x+5.6,5.1) -- (\x+5.6,1.95);
+    \node[font=\footnotesize, text=\c, anchor=west] at (\x+5.65,2.25) {submit};
+  }
+\end{tikzpicture}
+\end{document}
