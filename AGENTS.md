@@ -20,7 +20,7 @@ versioning.
 
 | Path | Responsibility |
 |---|---|
-| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `result`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
+| `cmd/tokimeki/main.go` | All cobra commands (`runner`, `submit`, `ps`, `runners`, `ls`, `top`, `stats`, `tui`, `job`, `group`, `result`, `report`, `logs`, `watch`, `events`, `kill`, `cancel`, `shell`, `exec`, `kp`, `gc`, `version`, `completion`): parse arguments, call the engine `client`/`runner`, hand results to a renderer |
 | `cmd/tokimeki/render_jobs.go`, `render_runners.go` | Human tables (`ps`, `group` summary, `runners` slot use) and the `top` dashboard, rendered from engine result types |
 | `cmd/tokimeki/root.go` | Root command: global `--base`, `--verbose` (turns on engine `debug` output on stderr) |
 | `cmd/tokimeki/notices.go` | Prints engine notices: `warning: …` / `--verbose` debug lines on stderr, NDJSON on stderr with `--json`; `tok tui` holds them until exit |
@@ -30,7 +30,7 @@ versioning.
 | `cmd/tokimeki/version.go` | `tokimeki version`: CLI version (ldflags), engine version (`version.Engine()`), commit, branch, build time |
 | `tui/` | `tok tui` dashboard: `tui.go` model/update, `view.go` rendering, `data.go` loading through the engine `client`, `actions.go` kill/cancel/shell actions |
 | `scripts/check-engine.sh` | Release guard for the engine pin (see Versioning) |
-| `docs/` | `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning). User-facing only — see "Where docs go" |
+| `docs/` | `HOW-IT-WORKS.md` (how jobs, runners, groups and files fit together, for users), `USAGE.md` (CLI reference), `BUILD.md` (build/CI/versioning). User-facing only — see "Where docs go" |
 | `RELEASE_NOTES.txt` | User-facing notes mailed with binary drops |
 
 **The CLI is a shim.** It parses arguments and formats engine results; it

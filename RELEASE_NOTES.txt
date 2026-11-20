@@ -23,9 +23,20 @@ the following command-line updates:
     tokimeki group my-sweep --wait --poll 60s
     tokimeki result JOB_ID
 
-  Jobs can write a result and a failure description to the files named by
-  $TOKIMEKI_JOB_RESULT and $TOKIMEKI_JOB_ERROR; tokimeki group shows the
-  failure type next to each failed job.
+  A job records its result or why it failed with
+    echo '{"result": {"acc": 0.91}}' | tokimeki report --from-json -
+  and tokimeki group shows the failure type next to each failed job.
+
+* Python package (tokimeki-py): submit Python functions as jobs from a sweep
+  coordinator, wait on the group and read their return values:
+    import tokimeki as tk
+    group = tk.current_group()
+    group.submit(run_experiment, cfg, desc=cfg["run_id"])
+    report = group.wait()
+  See the package README.
+
+* Killing a job now always records it as killed, even when it exits by
+  itself after the signal (as uv does), so killed jobs are no longer retried.
 
 * Warnings are printed on stderr; with --json they are JSON lines on stderr,
   so stdout stays machine-readable.

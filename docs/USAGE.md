@@ -1,6 +1,6 @@
 # Tokimeki — Usage Guide
 
-CLI reference and recipes for the `tokimeki` binary. See `README.md` for architecture; this file is "what can I do with it, and how."
+CLI reference and recipes for the `tokimeki` binary. See [HOW-IT-WORKS.md](HOW-IT-WORKS.md) for how jobs, runners and groups fit together; this file is "what can I do with it, and how."
 
 ## Table of contents
 
@@ -100,7 +100,8 @@ JSON output (`--json`) uses Unix nanosecond timestamps and is timezone-independe
 | `stats` | Snapshot of CPU/RAM/GPU usage across all running jobs |
 | `tui` | Interactive active jobs, live logs, and resource usage |
 | `job <id>` | Show full job metadata + script |
-| `result <id>` | Print the result a job wrote (JSON) |
+| `result <id>` | Print the result a job reported (JSON) |
+| `report --from-json F` | From inside a job: record its result or error |
 | `logs <id>` | Print stdout/stderr (with `--follow`, `--tail`) |
 | `watch <id>` | Block until terminal state; exit code = job's exit code |
 | `events` | Stream the shared event log |
@@ -638,7 +639,8 @@ Every command that takes `--json` prints the engine's result types. Conventions:
 | `job <id> --json` | Job |
 | `runners --json` | array of Runner |
 | `group <name> --json` | GroupReport (also with `--wait`) |
-| `result <id> --json` | the job's result, exactly the JSON value it wrote |
+| `result <id> --json` | the job's result, exactly the JSON value it reported |
+| `report --json` | `{"job_id", "kind"}` (`kind` is `result` or `error`) |
 | `stats --json` | array of StatsSample |
 | `events --json` | NDJSON, one Event per line (works with `-f`) |
 | `submit --json` | SubmitResult; an array when several scripts are submitted |
@@ -767,6 +769,21 @@ Every job runs with these variables set:
 | `TOKIMEKI_BIN` | The runner's `tokimeki` binary |
 
 A bash job can read its argument with `jq .execute.arg "$TOKIMEKI_JOB_META"`.
+
+A job records its outcome with `tok report`, which reads one JSON object with
+exactly one of `result` (any JSON value) or `error`:
+
+```bash
+echo '{"result": {"acc": 0.91}}' | tok report --from-json -
+echo '{"error": {"stage": "run", "type": "Diverged", "message": "loss is NaN"}}' | tok report --from-json -
+```
+
+The job defaults to `$TOKIMEKI_JOB_ID` (`--job ID` names another) and must
+still be running. `tok result` reads the result back; an error shows on the
+failed job (`tok group`, the `error` field in `--json`). Writing the files
+named by `TOKIMEKI_JOB_RESULT`/`TOKIMEKI_JOB_ERROR` directly also works; write
+a temporary file and rename it, so `tok result` never sees half a file.
+Python jobs submitted with the `tokimeki` Python package report for you.
 Each job's logs live in `<base>/jobs/<id>/` (`stdout.log`, `stderr.log`,
 plus `result.json`/`error.json` if the job wrote them); `tok logs`, `tok
 result` and `tok gc` work with them for you.
