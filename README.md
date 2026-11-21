@@ -108,6 +108,8 @@ Tokimeki is **masterless**. There is no central scheduling daemon.
 
 Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. A runner executes up to `--compute-threads` compute jobs at a time (default 1) plus at most one coordinator job. Only `tokimeki shell` uses networking; everything else, including `exec`, stays on the filesystem protocol.
 
+When a runner has a free slot, it checks the shared queue for work. It acquires the global filesystem lock, dequeues an eligible job (after accounting for priority, partitioning and other things) and records them as running on that runner, then releases the lock before starting them. Each runner does this independently; the lock prevents two runners from taking the same job.
+
 A coordinator (see [Run a sweep](#run-a-sweep)) is just a job that happens to submit other jobs; it is not a master, and if it dies, the jobs it already submitted keep running.
 
 This means:

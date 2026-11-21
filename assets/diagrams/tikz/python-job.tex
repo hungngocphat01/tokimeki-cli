@@ -20,7 +20,7 @@
   \node[cmd, minimum width=5.3cm, align=left, font=\ttfamily\scriptsize, anchor=north west] (code) at (0.15,7.25)
     {job = group.submit(train\_trial, cfg)\\group.wait()\\group.result(job)};
   \node[cli, minimum width=2.6cm] (cliA) at (2.1,3.75) {tokimeki CLI};
-  \draw[flow] (code.south -| cliA) -- (cliA.north) node[midway, right, steplbl] {calls};
+  \draw[flow] (code.south -| cliA) -- (cliA.north) node[midway, right, steplbl] {serialize and call};
 
   % one GPU node: the runner (the tokimeki binary) runs the Python runtime,
   % which runs the requested function with the requested argument
