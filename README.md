@@ -4,11 +4,11 @@
 
 A masterless, filesystem-based job runner.
 
-Tokimeki lets you submit and manage jobs across nodes that share a common filesystem but have no direct network connectivity. All communication happens through the shared filesystem, with no master node. The one exception is `tokimeki shell`: it sets up through the filesystem, then uses a direct TCP connection for the interactive terminal.
+Tokimeki lets you submit and manage jobs across nodes that share a common filesystem but have no direct network connectivity. Almost communication happens through the shared filesystem, with no master node (except `tokimeki shell`).
 
 ![A script on the login node is submitted into a queue on the shared filesystem; a runner on each of three GPU nodes takes the next job from that queue](assets/overview.svg)
 
-A **job** is one piece of work that a runner executes. Tokimeki currently supports two kinds: a shell script, and a call to a Python function with one argument, whose return value comes back to whoever submitted it. This CLI submits scripts, either a file (`tokimeki submit train.sh`) or an inline command (`tokimeki submit -c "..."`). To submit Python functions and collect their return values, use the [Python package](https://github.com/hungngocphat01/tokimeki-py).
+A **job** is one piece of work that a runner executes. As with other job schedulers, a job in Tokimeki is mainly defined as a shell script that gets queued and executed. Other than that, Tokimeki also support *jobs as Python functions*. See the corresponding [Python package](https://github.com/hungngocphat01/tokimeki-py) for more information.
 
 ## ❓ Why Tokimeki?
 
@@ -21,20 +21,20 @@ If you work with PBS, SLURM, or similar job schedulers on a shared cluster, you'
 Tokimeki solves both. You submit a PBS/SLURM job that starts a Tokimeki Runner, then interact with that runner from any node that shares the same filesystem with the runners:
 
 ```bash
-# In the scheduler allocation: start one runner process
+# In the GPU allocation: start one runner process
 #!/bin/bash
-#PBS -l walltime=24:00:00
 tokimeki runner --id node01 --manner-period 30m
 
+# -------------------------------------------------
 
-# From any shared fs node: submit work at any time
-# This works before any runner is ready
+# From any other node: submit work at any time
+# This works *before* any runner is ready
 tokimeki submit do_compute.sh
 
 # Wrong config? replace process immediately without re-entering scheduler queue
+tokimeki kill <old_job_id>
 tokimeki submit -w node01 -c "python do_compute.py --alpha 0.0003"
 #                ^~~~ submits directly to node01
-tokimeki kill <old_job_id>
 
 # Finished early? enqueue the next experiment in the same allocation
 tokimeki submit eval-script.sh
@@ -51,6 +51,30 @@ In _a certain anime series_'s timeline, Tokimeki is the thing that comes after K
 ## Acknowledgement
 
 This project was developed autonomously by Claude Code and OpenAI Codex based on my requirements and guidance.
+
+## 🔧 Setup
+
+You almost do not need to set anything up. Tokimeki packages everything in one Go binary. Instead, we make several assumptions:
+1. Your worker (GPU) nodes have access to a shared filesystem (here we assume it's the home folder)
+2. Your worker nodes execute jobs under the same Linux user
+
+Since all physical GPU nodes can access a shared filesystem, simply copy Tokimeki there. Then, write one SLURM/PBS job:
+
+```bash
+#!/bin/bash
+#PBS -q A100-VM
+#PBS -oe
+#PBS -lselect=1:ngpus=1
+
+# Optional: set another Tokimeki job directory
+export TOKIMEKI_HOME=/mnt/myreservedddir/.tokimeki
+
+/home/mycorporateuser/.local/bin/tokimeki --manner-period 1h --name gpu01 --compute-threads 3
+```
+
+Then submit this job: `qsub tokimeki-1.sh`. If you need more nodes, simply clone the script and set another `--name`.
+
+From now you interact with job submissions through `tokimeki` instead of `qsub` or `sbatch`.
 
 ## 💻 Quick start
 
@@ -78,11 +102,9 @@ tokimeki job <job_id>   # job details
 tokimeki watch <job_id> # block until it finishes
 ```
 
-`submit` copies the script at submission time, and the script starts in its own job directory rather than where you submitted it from. Put a `cd /path/to/project` at the top if it relies on relative paths.
+## 🏗️ Architecture
 
-## Architecture
-
-Tokimeki is **masterless**. There is no coordinator process.
+Tokimeki is **masterless**. There is no central scheduling daemon.
 
 Tokimeki works over a shared filesystem. Each runner daemon is independent, and the CLI interacts with runners through that shared filesystem. A runner executes up to `--compute-threads` compute jobs at a time (default 1) plus at most one coordinator job. Only `tokimeki shell` uses networking; everything else, including `exec`, stays on the filesystem protocol.
 
@@ -102,15 +124,45 @@ The manner timer resets every time a job is running or queued. So if jobs keep a
 
 ### Everything goes through files
 
-The login node and the runners never open a connection to each other. Every exchange between them is one side writing a file under `TOKIMEKI_HOME` and the other side reading it later, so every node must see the same directory.
+The login node and the runners never communicate through networking. Every exchange between them is one side writing a file under `$TOKIMEKI_HOME` and the other side reading it later, so every node must see the same directory.
 
-Work that any runner may do goes into the shared queue, as in the first figure: `tok submit` writes the job there, and whichever runner has a free executor takes it. A message meant for one particular runner, such as `tok kill`, `tok exec`, or the setup of `tok shell`, goes into that runner's own inbox instead. Each runner checks its inbox every couple of seconds, acts on what it finds, and writes the reply into its outbox, which the client keeps reading until the reply shows up.
+Work that any runner may do goes into the shared queue, as in the first figure: `tokimeki submit` writes the job there, and whichever runner has a free executor takes it. A message meant for one particular runner, such as `tokimeki kill`, `tokimeki exec`, or the setup of `tokimeki shell`, goes into that runner's own *inbox directory* instead. Each runner checks its inbox every couple of seconds, acts on what it finds, and writes the reply into its outbox, which the client keeps reading until the reply shows up.
 
-![tok kill on the login node writes a request into gpu02's inbox on the shared filesystem; gpu02 reads it, stops the job, and writes a reply into its outbox, which the login node reads. gpu01 and gpu03 only ever read their own inboxes](assets/inbox.svg)
+![tokimeki kill on the login node writes a request into gpu02's inbox on the shared filesystem; gpu02 reads it, stops the job, and writes a reply into its outbox, which the login node reads. gpu01 and gpu03 only ever read their own inboxes](assets/inbox.svg)
 
-The rest works the same way. Runners write their heartbeat, job status, and logs into the shared directory, and `tok ps`, `tok runners`, and `tok logs` read them from there. The only exception is the terminal session of `tok shell`, which is set up through the inbox and then runs over TCP (see [Interactive shell](#interactive-shell)).
+The rest works the same way. Runners write their heartbeat, job status, and logs into the shared directory, and `tokimeki ps`, `tokimeki runners`, and `tokimeki logs` read them from there. The only exception is the terminal session of `tokimeki shell`, which is set up through the inbox and then runs over TCP (see [Interactive shell](#interactive-shell)).
 
 Every write goes to a temporary file first and is then renamed into place, so a reader never sees half a file. This relies on `rename()` being atomic, which holds on local filesystems and NFS v3+; Tokimeki may not work reliably on remote filesystems that break that guarantee.
+
+Below is the directory structure of `$TOKIMEKI_HOME`:
+
+```
+~/.tokimeki/
+├── tmp/                             # staging for atomic writes (shared by all nodes)
+├── shared/
+│   ├── queue.json                   # global FIFO queue of pending job IDs
+│   ├── .global-lock                 # registry lock file for queue/meta updates
+│   └── reservations/                # durable dequeue reservations
+│       └── <job_id>.json
+├── workers/
+│   └── <worker_id>/
+│       ├── info.json                # static: hostname, pid, start_time, version
+│       ├── heartbeat                # unix timestamp (nanoseconds), updated every tick
+│       ├── inbox/                   # client writes .req files here
+│       ├── outbox/                  # runner writes .resp files here
+│       ├── shell/                   # private (0700) rendezvous files for open shell sessions
+│       ├── stats.json               # resource sample per running job, plus their sum
+│       └── running/                 # one <job_id>.json per running job (job ID, kind, PID, start)
+│
+└── jobs/
+    └── <job_id>/
+        ├── meta.json                # job record, schema 2: execute, status, timestamps (docs/protocol.md)
+        ├── script.sh                # copy of the submitted job script
+        ├── stdout.log               # captured stdout
+        ├── stderr.log               # captured stderr
+        ├── result.json              # optional, written by the job ($TOKIMEKI_JOB_RESULT)
+        └── error.json               # optional, written by the job ($TOKIMEKI_JOB_ERROR)
+```
 
 ### When a runner disappears
 
@@ -140,7 +192,7 @@ tokimeki shell                         runner gpu01
 
 Protocol details are in the engine repository (`README.md`, "Interactive Shell Protocol").
 
-## Run a sweep
+## Advanced: run a sweep as a job group
 
 This is an advanced use-case that has been introduced in Tokimeki v0.5.0.
 
