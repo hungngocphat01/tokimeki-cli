@@ -58,6 +58,7 @@ stderr, e.g. `tok --verbose runner` to see scheduling decisions as they happen.
 |---|---|
 | `runner` | Start a runner on this node |
 | `runners` | List runners, their busy slots (`BUSY 2/3`) and liveness |
+| `config -w <runner>` | Show or change a running runner's compute threads and manner period |
 | `submit` | Queue scripts or an inline command |
 | `ps` / `ls` | List running and queued jobs (`ls` adds runners) |
 | `group <name>` | A group's progress and jobs; `--wait` blocks until it is done |
@@ -103,6 +104,33 @@ tok runner --id gpu01 --compute-threads 2
 tok runners        # live runners
 tok runners -a     # include stopped ones
 ```
+
+### Changing a running runner
+
+`tok config` shows a live runner's settings and changes them without a
+restart:
+
+```bash
+tok config -w gpu01                                  # show the settings
+tok config -w gpu01 --set compute-threads 2
+tok config -w gpu01 --set compute-threads=4 --set manner-period=2h
+```
+
+```
+compute-threads  2
+manner-period    1h
+```
+
+- Settings: `compute-threads` (at least 1) and `manner-period` (e.g. `30m`;
+  `0` never exits).
+- `--set` takes `KEY VALUE` or `KEY=VALUE` and can be repeated. The runner
+  applies all of them or none, and prints the settings it then has.
+- Changes affect what the runner starts next. Lowering `compute-threads`
+  stops no running job: `tok runners` shows e.g. `BUSY 3/1` until enough jobs
+  finish. A new manner period counts idle time from the change.
+- Changes last until the runner exits; a restarted runner uses its flags.
+- The runner must be running. Runners started before this command existed
+  reject it; restart them with the new binary.
 
 ---
 
@@ -314,8 +342,8 @@ tok gc --dry-run           # show what would be removed
 
 ## Scripting with `--json`
 
-`ps`, `runners`, `job`, `group`, `result`, `stats`, `events`, `submit`,
-`watch`, `kill`, `cancel`, `exec` and `gc` accept `--json`:
+`ps`, `runners`, `config`, `job`, `group`, `result`, `stats`, `events`,
+`submit`, `watch`, `kill`, `cancel`, `exec` and `gc` accept `--json`:
 
 ```bash
 tok ps --json | jq 'group_by(.worker_id) | map({runner: .[0].worker_id, jobs: length})'

@@ -5,6 +5,17 @@ Hello,
 A new Tokimeki CLI binary for Linux amd64 is available. This build contains
 the following command-line updates:
 
+* Change a running runner's settings without restarting it (v0.6.0):
+    tokimeki config -w node01
+    tokimeki config -w node01 --set compute-threads 2
+    tokimeki config -w node01 --set manner-period 30m
+
+  Without --set it shows the settings. A change affects what the runner
+  starts next: lowering compute-threads stops no running job. A new manner
+  period counts idle time from the change. Changes last until the runner
+  exits. Runners started with an older binary reject the command; restart
+  them with this one.
+
 * Version 0.5.0 changes how jobs are stored. Upgrade every runner and every
   tokimeki binary that shares a TOKIMEKI_HOME at the same time. Jobs from
   older versions still list, run and resubmit; each command that reads them

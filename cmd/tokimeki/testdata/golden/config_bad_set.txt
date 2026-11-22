@@ -1,0 +1,25 @@
+
+--stderr--
+Error: --set compute-threads needs a value
+Usage:
+  tok config -w <worker_id> [--set KEY VALUE]... [flags]
+
+Examples:
+  tokimeki config -w node01
+  tokimeki config -w node01 --set compute-threads 2
+  tokimeki config -w node01 --set compute-threads=4 --set manner-period=2h
+
+Flags:
+  -h, --help               help for config
+      --json               print {compute_threads, manner_period_secs} as JSON
+      --set stringArray    change a setting: KEY VALUE or KEY=VALUE (repeatable)
+      --timeout duration   response timeout (default 30s)
+  -w, --worker string      runner to configure
+
+Global Flags:
+      --base string   base directory for state (default: ~/.tokimeki)
+      --verbose       print engine debug logs on stderr (warnings are always printed)
+
+
+--err--
+--set compute-threads needs a value

@@ -218,6 +218,7 @@ Commands at a glance:
 
 - `tokimeki runner`: start a runner daemon on the current node (`--compute-threads N` runs N compute jobs plus one coordinator)
 - `tokimeki runners`: list known runners and their liveness
+- `tokimeki config -w <node>`: show a live runner's settings, or change them (`--set compute-threads 2`, `--set manner-period 30m`)
 - `tokimeki ps` / `ls`: inspect queued and running jobs
 - `tokimeki top`: one-shot summary with RUNNERS / JOBS / RECENT panels (`--plain`)
 - `tokimeki submit`: submit scripts, an inline command, or a JSON request (`--from-json`; `--after`, `--priority`, `--cpus`, `--mem-mb`, `--retries`, `--backoff`, `-g/--group`, `-C/--coordinator`, `--desc`, `--live`, `--wait`, `--quiet`, `--json`)

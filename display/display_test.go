@@ -160,3 +160,11 @@ func TestRunnerSlots(t *testing.T) {
 		}
 	}
 }
+
+func TestGoDuration(t *testing.T) {
+	for secs, want := range map[float64]string{0: "0s", 45: "45s", 1800: "30m", 3600: "1h", 5400: "1h30m", 3661: "1h1m1s", 7200 + 30: "2h0m30s"} {
+		if got := GoDuration(secs); got != want {
+			t.Errorf("GoDuration(%v) = %q, want %q", secs, got, want)
+		}
+	}
+}

@@ -2,6 +2,7 @@ package display
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -52,6 +53,19 @@ func Duration(secs float64) string {
 	}
 	if out == "" {
 		return "0m"
+	}
+	return out
+}
+
+// GoDuration renders seconds as a Go duration without zero tails ("1h",
+// "1h30m", "45s"), so it can be passed back as a flag value.
+func GoDuration(secs float64) string {
+	out := time.Duration(secs * float64(time.Second)).String()
+	if strings.HasSuffix(out, "m0s") {
+		out = strings.TrimSuffix(out, "0s")
+	}
+	if strings.HasSuffix(out, "h0m") {
+		out = strings.TrimSuffix(out, "0m")
 	}
 	return out
 }

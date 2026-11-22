@@ -159,3 +159,20 @@ func TestNormalizeLogIndexArgs(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+func TestParseConfigSets(t *testing.T) {
+	got, err := parseConfigSets([]string{"compute-threads", "manner-period=2h", "x"}, []string{"2", "y"})
+	want := map[string]string{"compute-threads": "2", "manner-period": "2h", "x": "y"}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("parseConfigSets = %v, %v", got, err)
+	}
+	for _, tc := range []struct{ sets, args []string }{
+		{[]string{"compute-threads"}, nil},                        // no value
+		{nil, []string{"2"}},                                      // stray argument
+		{[]string{"compute-threads=1", "compute-threads=2"}, nil}, // twice
+	} {
+		if _, err := parseConfigSets(tc.sets, tc.args); client.CodeOf(err) != client.CodeInvalidArgument {
+			t.Errorf("parseConfigSets(%v, %v) err = %v", tc.sets, tc.args, err)
+		}
+	}
+}

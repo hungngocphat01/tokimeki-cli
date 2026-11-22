@@ -1095,6 +1095,90 @@ func cascadeExit(cmd *cobra.Command, stop *client.GroupStop) error {
 	return errSilentExit
 }
 
+// --- config ---
+
+func configCmd() *cobra.Command {
+	var worker string
+	var sets []string
+	var timeout time.Duration
+	var asJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "config -w <worker_id> [--set KEY VALUE]...",
+		Short: "Show or change a running runner's settings",
+		Long: `Show a running runner's live settings, or change them with --set.
+
+Settings: compute-threads (at least 1) and manner-period (e.g. 30m; 0 never
+exits). A change applies to future scheduling only: lowering compute-threads
+stops no running job, the runner just starts no new compute job until fewer
+than the new limit run. A new manner period counts idle time from the change.
+Changes last until the runner exits.
+
+--set takes KEY VALUE or KEY=VALUE and may be repeated; the runner applies
+all of them or none.`,
+		Example: `  tokimeki config -w node01
+  tokimeki config -w node01 --set compute-threads 2
+  tokimeki config -w node01 --set compute-threads=4 --set manner-period=2h`,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			set, err := parseConfigSets(sets, args)
+			if err != nil {
+				return err
+			}
+			cmd.SilenceUsage = true // the arguments parsed; later errors are the runner's
+			cfg, err := client.New(resolveBase()).Config(worker, set, timeout)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return writeJSON(cfg)
+			}
+			manner := display.GoDuration(cfg.MannerPeriodSecs)
+			if cfg.MannerPeriodSecs == 0 {
+				manner = "0 (never exits)"
+			}
+			fmt.Printf("%-16s %d\n", protocol.ConfigComputeThreads, cfg.ComputeThreads)
+			fmt.Printf("%-16s %s\n", protocol.ConfigMannerPeriod, manner)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&worker, "worker", "w", "", "runner to configure")
+	cmd.Flags().StringArrayVar(&sets, "set", nil, "change a setting: KEY VALUE or KEY=VALUE (repeatable)")
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {compute_threads, manner_period_secs} as JSON")
+	_ = cmd.MarkFlagRequired("worker")
+	_ = cmd.RegisterFlagCompletionFunc("worker", completeWorkerIDs)
+	_ = cmd.RegisterFlagCompletionFunc("set", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
+		return protocol.ConfigKeys, cobra.ShellCompDirectiveNoFileComp
+	})
+	return cmd
+}
+
+// parseConfigSets pairs --set values with their settings. A --set without
+// "=" takes its value from the next positional argument, so
+// `--set compute-threads 2` works as typed.
+func parseConfigSets(sets, args []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, s := range sets {
+		key, value, ok := strings.Cut(s, "=")
+		if !ok {
+			if len(args) == 0 {
+				return nil, argError("--set %s needs a value", s)
+			}
+			value, args = args[0], args[1:]
+		}
+		if _, dup := out[key]; dup {
+			return nil, argError("--set %s given twice", key)
+		}
+		out[key] = value
+	}
+	if len(args) > 0 {
+		return nil, argError("unexpected argument %q (use --set KEY VALUE)", args[0])
+	}
+	return out, nil
+}
+
 // --- logs ---
 
 func logsCmd() *cobra.Command {
