@@ -5,6 +5,16 @@ Hello,
 A new Tokimeki CLI binary for Linux amd64 is available. This build contains
 the following command-line updates:
 
+* Jobs are spread over runners (v0.7.0). A runner now leaves a queued job
+  to another runner that is running fewer jobs and has a free slot, so
+  empty nodes are used first. Before, two jobs submitted together on two
+  idle runners could both start on the same one. A runner with more
+  --compute-threads gets its extra slots once the others are full. If the
+  less busy runner has not taken the job within 10 seconds (for example
+  because it just stopped), any runner may take it. Jobs pinned with -w and
+  coordinators are not affected. Restart runners with this binary to get
+  the new behaviour; older runners still take jobs the old way.
+
 * Change a running runner's settings without restarting it (v0.6.0):
     tokimeki config -w node01
     tokimeki config -w node01 --set compute-threads 2

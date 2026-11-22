@@ -41,7 +41,10 @@ tok submit ──► queued ──► running ──► completed     (exit code
    with a free slot takes the next job it may run: highest `--priority`
    first, then the oldest. A job waits while its `--after` jobs haven't
    completed, while it is pinned to another runner (`-w`), or while it needs
-   more `--cpus`/`--mem-mb` than a runner has left.
+   more `--cpus`/`--mem-mb` than a runner has left. Jobs are spread: a
+   runner leaves a job to another runner that is running fewer jobs and has
+   a free slot, so empty nodes are used first. If that runner hasn't taken
+   the job within 10 seconds, any runner may.
 3. **Run.** The runner starts the job on its node and captures its stdout and
    stderr. `tok logs` shows them, `tok ps` shows it running, and
    `tok stats` shows its CPU, memory and GPU use.
