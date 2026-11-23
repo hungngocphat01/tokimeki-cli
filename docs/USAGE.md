@@ -59,6 +59,7 @@ stderr, e.g. `tok --verbose runner` to see scheduling decisions as they happen.
 | `runner` | Start a runner on this node |
 | `runners` | List runners, their busy slots (`BUSY 2/3`) and liveness |
 | `config -w <runner>` | Show or change a running runner's compute threads and manner period |
+| `reload -w <runner>` | Restart an idle runner with the tokimeki binary now on disk; prints its new version |
 | `submit` | Queue scripts or an inline command |
 | `ps` / `ls` | List running and queued jobs (`ls` adds runners) |
 | `group <name>` | A group's progress and jobs; `--wait` blocks until it is done |
@@ -131,6 +132,33 @@ manner-period    1h
 - Changes last until the runner exits; a restarted runner uses its flags.
 - The runner must be running. Runners started before this command existed
   reject it; restart them with the new binary.
+
+### Updating a running runner's binary
+
+After installing a new tokimeki binary, `tok reload` makes an idle runner
+restart itself with it, without leaving its allocation:
+
+```bash
+mv tokimeki-new ~/.local/bin/tokimeki     # replace the file; don't write into it
+tok reload -w gpu01
+```
+
+```
+Runner gpu01 reloaded: engine v0.8.1, cli v0.8.1 (was engine v0.8.0, cli v0.8.0)
+```
+
+- Only an idle runner reloads. A runner running a job, or with an open
+  `shell` or `exec -i` session, refuses; run the command again once it is
+  free. Jobs queued meanwhile wait and start after the reload.
+- The runner runs the binary at the path it was started from, with the same
+  command line. It keeps its ID (even one generated without `--id`), PID,
+  start time, and the settings changed with `tok config`.
+- Replace the binary with `mv` or `install`. Writing into the running file
+  (`cp` over it) fails with "Text file busy" on Linux.
+- If the new binary cannot start, the runner is gone: `tok reload` times out
+  and the runner's log shows why. Start it again by hand.
+- Runners started before this command existed reject it; restart them with
+  the new binary.
 
 ---
 
@@ -342,7 +370,7 @@ tok gc --dry-run           # show what would be removed
 
 ## Scripting with `--json`
 
-`ps`, `runners`, `config`, `job`, `group`, `result`, `stats`, `events`,
+`ps`, `runners`, `config`, `reload`, `job`, `group`, `result`, `stats`, `events`,
 `submit`, `watch`, `kill`, `cancel`, `exec` and `gc` accept `--json`:
 
 ```bash

@@ -62,6 +62,7 @@ func newRootCmd() *cobra.Command {
 		add(killCmd(), "control"),
 		add(cancelCmd(), "control"),
 		add(configCmd(), "control"),
+		add(reloadCmd(), "control"),
 
 		add(gcCmd(), "maintain"),
 		add(versionCmd(), "maintain"),

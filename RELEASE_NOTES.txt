@@ -5,6 +5,25 @@ Hello,
 A new Tokimeki CLI binary for Linux amd64 is available. This build contains
 the following command-line updates:
 
+* Update a running runner's binary without restarting it by hand (v0.8.0).
+  Install the new tokimeki binary with mv or install (not cp, which fails
+  with "Text file busy"), then:
+    tokimeki reload -w node01
+
+  The runner starts the new binary in place and prints its new version. It
+  keeps its ID, start time and the settings changed with tokimeki config.
+  Only an idle runner reloads: with a running job or an open shell/exec
+  session it refuses, so run the command again later. If the new binary
+  cannot start, the runner stops; start it again by hand. Runners started
+  with an older binary reject the command; restart them with this one.
+
+* Python jobs can run in a conda environment (v0.8.0). The tokimeki Python
+  package (v0.8.0) submits python-conda jobs when the coordinator runs in a
+  conda environment; the runner runs them with
+  `conda run -p <env> python -m tokimeki.call ...`, so conda must be on the
+  runner's PATH. Set TK_EXECUTOR=python-uv or python-conda to choose
+  explicitly. Restart runners with this binary to run such jobs.
+
 * Jobs are spread over runners (v0.7.0). A runner now leaves a queued job
   to another runner that is running fewer jobs and has a free slot, so
   empty nodes are used first. Before, two jobs submitted together on two

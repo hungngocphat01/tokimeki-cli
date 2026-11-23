@@ -230,7 +230,7 @@ func eventStatus(item client.Event) string {
 		return protocol.StatusKilled
 	case client.EventCrashed:
 		return protocol.StatusCrashed
-	case client.EventRunnerStart:
+	case client.EventRunnerStart, client.EventRunnerReload:
 		return protocol.StatusCompleted
 	}
 	return client.StatusStopped

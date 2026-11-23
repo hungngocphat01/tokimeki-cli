@@ -155,6 +155,15 @@ func runnerCmd() *cobra.Command {
 				}
 			}
 
+			// Set when `tokimeki reload` replaced the previous process: keep
+			// its ID and live settings.
+			resumed, err := runner.TakeReloadState()
+			if err != nil {
+				return err
+			}
+			if resumed != nil {
+				workerID = resumed.WorkerID
+			}
 			if workerID == "" {
 				hostname, _ := os.Hostname()
 				workerID = hostname + "-" + randomHex(4)
@@ -165,6 +174,11 @@ func runnerCmd() *cobra.Command {
 			d.SetTTL(ttl)
 			d.SetCapacity(runner.Capacity{CPUs: capCPUs, MemMB: capMemMB})
 			d.SetComputeThreads(computeThreads)
+			d.SetFrontendVersion(resolvedCLIVersion())
+			if resumed != nil {
+				d.Resume(resumed)
+				computeThreads, mannerPeriod = d.Config().ComputeThreads, time.Duration(d.Config().MannerPeriodSecs*float64(time.Second))
+			}
 			if err := d.Register(); err != nil {
 				return fmt.Errorf("register: %w", err)
 			}
@@ -173,7 +187,11 @@ func runnerCmd() *cobra.Command {
 			if ttl > 0 {
 				ttlLabel = display.TTL(ttl)
 			}
-			log.Printf("Runner %s started (compute_threads=%d, poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), computeThreads, poll, mannerPeriod, ttlLabel, base)
+			event := "started"
+			if resumed != nil {
+				event = "reloaded"
+			}
+			log.Printf("Runner %s %s (compute_threads=%d, poll=%s, manner=%s, ttl=%s, base=%s)", d.WorkerID(), event, computeThreads, poll, mannerPeriod, ttlLabel, base)
 
 			// Handle graceful shutdown.
 			sigCh := make(chan os.Signal, 1)
@@ -1152,6 +1170,49 @@ all of them or none.`,
 	_ = cmd.RegisterFlagCompletionFunc("set", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return protocol.ConfigKeys, cobra.ShellCompDirectiveNoFileComp
 	})
+	return cmd
+}
+
+func reloadCmd() *cobra.Command {
+	var worker string
+	var timeout time.Duration
+	var asJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "reload -w <worker_id>",
+		Short: "Restart an idle runner with the tokimeki binary now on disk",
+		Long: `Make an idle runner replace itself with the tokimeki binary now on disk
+(the path it was started from), then print the versions it runs.
+
+The runner keeps its ID, PID, command line, start time and the settings
+changed with 'tokimeki config'. Only an idle runner reloads: one running a
+job, or with an open shell or exec session, refuses; reload it once it is
+free. Install the new binary by replacing the file (mv, install), not by
+writing into it.`,
+		Example:           `  tokimeki reload -w node01`,
+		Args:              cobra.NoArgs,
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cmd.SilenceUsage = true // the arguments parsed; later errors are the runner's
+			res, err := client.New(resolveBase()).Reload(worker, timeout)
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				return writeJSON(res)
+			}
+			fmt.Printf("Runner %s reloaded: engine %s, cli %s (was engine %s, cli %s)\n",
+				res.WorkerID, res.Engine, fallback(res.Frontend, "unknown"),
+				res.PrevEngine, fallback(res.PrevFrontend, "unknown"))
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVarP(&worker, "worker", "w", "", "runner to reload")
+	cmd.Flags().DurationVar(&timeout, "timeout", 30*time.Second, "response timeout")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "print {worker_id, pid, engine, frontend, prev_engine, prev_frontend} as JSON")
+	_ = cmd.MarkFlagRequired("worker")
+	_ = cmd.RegisterFlagCompletionFunc("worker", completeWorkerIDs)
 	return cmd
 }
 

@@ -118,7 +118,7 @@ tok submit -C -g alexnet-lr-01 ...
 |---|---|---|
 | Script | `tok submit train.sh` | `train.sh`, copied at submit time (later edits don't affect the job) |
 | Inline command | `tok submit -c "python train.py --lr 0.1"` | that command, in a small script |
-| Python function | `group.submit(run_experiment, cfg)` from the Python package, or `tok submit --from-json` with type `python-uv` | `run_experiment(cfg)` in your uv project |
+| Python function | `group.submit(run_experiment, cfg)` from the Python package, or `tok submit --from-json` with type `python-uv` or `python-conda` | `run_experiment(cfg)` in your uv project or conda environment |
 
 Any of these can also be given as JSON (`tok submit --from-json FILE`, or `-`
 for stdin), which is how programs submit jobs.
@@ -237,6 +237,14 @@ group.result(job)   └─ tok result <id>         ◄── jobs/<id>/result.js
 - The runner uses the `uv` on its own `PATH` and your project's existing
   `.venv` (`--no-sync`, so many jobs starting at once don't fight over one
   environment). Run `uv sync` before submitting.
+- Conda works the same way. A coordinator running in a conda environment
+  submits type `python-conda` with `env` set to that environment's path,
+  and the runner starts `conda run -p <env> --no-capture-output python -m
+  tokimeki.call <entry>` with the `conda` on its own `PATH`. The
+  environment must be reachable at the same path from every runner and
+  have `tokimeki` installed. The package picks uv or conda from the
+  environment it runs in; set `TK_EXECUTOR=python-uv` or `python-conda` to
+  choose. From the CLI, `env` defaults to your active `$CONDA_PREFIX`.
 - A Python job exits 0 when the function returns, 1 when it raises (the error
   is reported with stage `run`), and 2 when it couldn't be imported (stage
   `load`).
